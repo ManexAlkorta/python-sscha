@@ -106,10 +106,10 @@ project('python-sscha',
   # --- END OF NUMPY CONFIGURATION ---
   if openblas_dep.found()
     message('openblas environment detected correctly.')
-    list_dep = [py_dep, mpi_dep, quadmath_dep, openblas_dep, lapack_dep, blas_dep]
+    list_dep = [py_dep, mpi_dep, quadmath_dep, openblas_dep, lapack_dep, blas_dep, openmp_dep]
   else
     warning('No openblas found.')
-    list_dep = [py_dep, mpi_dep, quadmath_dep, lapack_dep, blas_dep]
+    list_dep = [py_dep, mpi_dep, quadmath_dep, lapack_dep, blas_dep, openmp_dep]
   endif
 
 # --- Common Flags ---

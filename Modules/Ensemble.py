@@ -3848,8 +3848,7 @@ Error while loading the julia module.
 
     def get_free_energy_hessian_dev(self, include_v4 = False, get_full_hessian = True, verbose = False):
         """
-        Dev function. With the meson installation, the OpenMP parallelization is NOT WORKING!
-        With the old installation everything is fine (old_setup.py)
+        Dev function.
 
         GET THE FREE ENERGY ODD CORRECTION DEV
         ======================================
