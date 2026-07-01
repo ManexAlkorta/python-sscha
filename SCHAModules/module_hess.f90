@@ -160,12 +160,6 @@ subroutine get_ref3fc(nat, orbit3t, indep_3fc_elem, n_indep_3fc_elem, kernel_3fc
     !$omp parallel private (i, nat1, nat2, nat3, alpha, beta, gamma, v3, indep_3fc, tmp_ref_3fc)
     !$omp do schedule (dynamic, 1) private (v3, indep_3fc, tmp_ref_3fc)
     do ref3 = 1, nref3
-        !debugging parallel installation
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        print *, "Iteration ", ref3, "executed by thread ", omp_get_thread_num()
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         nat1 = orbit3t(ref3,1,1)
         nat2 = orbit3t(ref3,1,2)
         nat3 = orbit3t(ref3,1,3)
@@ -567,6 +561,266 @@ wsq_scf, nrefq4, n_mode, iq, dimq4, nsym)
 
 	complex(8) :: ktea1, ktea2, W1, W2
     double precision, parameter :: eps = 1e-6
+    double precision, parameter :: alpha_mix = 0.5d0
+    integer, parameter :: maxiter = 50
+
+    perms = reshape([ &
+        1,2,3,4, 2,1,4,3, 3,4,1,2, 4,3,2,1, &
+        1,3,2,4, 3,1,4,2, 2,4,1,3, 4,2,3,1, &
+        4,2,3,1, 2,4,1,3, 3,1,4,2, 1,3,2,4], &
+    [12,4], order=[2,1])
+
+    wsq_scf = wsq1
+
+    if (verbose) then
+        tstart = omp_get_wtime()
+        print*, "======================= get_scf_wsq() ======================="
+        print*, "Self-consintent loop to compute \Theta(-q1,q2,q3,-q4)."
+        print*, ""
+    end if
+    do1 : do iter = 1, maxiter
+        if (verbose) then
+            print*, "    Iteration", iter
+        end if
+        if (iter == 1) then 
+            wsq2 = wsq1
+        else
+            wsq2 = wsq_scf
+        end if
+        wsqn = (0.0d0,0.0d0)
+        do rq4_0 = 1, nrefq4
+            q10 = refq4(rq4_0,1,1)+1
+            q20 = refq4(rq4_0,1,2)+1
+            q30 = refq4(rq4_0,1,3)+1
+            q40 = refq4(rq4_0,1,4)+1
+            do rq4_1 = 1, nrefq4
+                q1_ref = refq4(rq4_1,1,1)+1
+                q2_ref = refq4(rq4_1,1,2)+1
+                q5_1ref = refq4(rq4_1,1,3)+1
+                q6_1ref = refq4(rq4_1,1,4)+1
+                do q4i_1 = 1, norbitq4(rq4_1)
+                    q1 = refq4(rq4_1,q4i_1,1)+1
+                    q2 = refq4(rq4_1,q4i_1,2)+1
+                    q5_1 = refq4(rq4_1,q4i_1,3)+1
+                    q6_1 = refq4(rq4_1,q4i_1,4)+1
+                    iperm_1 = refq4o(rq4_1,q4i_1,1)
+					isym_1 = refq4o(rq4_1,q4i_1,2)+1
+                    if ((q10 == q1) .and. (q20 == q2)) then
+                        do rq4_2 = 1, nrefq4	
+                            q5_2ref = refq4(rq4_2,1,1)+1
+                            q6_2ref = refq4(rq4_2,1,2)+1
+                            q3_ref = refq4(rq4_2,1,3)+1
+                            q4_ref = refq4(rq4_2,1,4)+1	
+                            do q4i_2 = 1, norbitq4(rq4_2)
+                                q5_2 = refq4(rq4_2,q4i_2,1)+1
+                                q6_2 = refq4(rq4_2,q4i_2,2)+1
+                                q3 = refq4(rq4_2,q4i_2,3)+1
+                                q4 = refq4(rq4_2,q4i_2,4)+1
+                                iperm_2 = refq4o(rq4_2,q4i_2,1)
+								isym_2 = refq4o(rq4_2,q4i_2,2)+1
+                                if ((q30 == q3) .and. (q40 == q4)) then
+                                    if ((q5_1 == q5_2) .and. (q6_1 == q6_2)) then
+                                        !$omp parallel &
+                                        !$omp private (mu2,mu3,mu4,mu5,mu6) &
+                                        !$omp private (nu1,nu2,nu5,nu6,lambda5,lambda6,lambda3,lambda4,nunu,lala,mumu1,mumu2)
+                                        !$omp do schedule (dynamic, 1) private (ktea1,ktea2,W1,W2)         
+                                        do mu1 = 1, n_mode
+                                        do nu1 = 1, n_mode
+                                        if (degs(q1,nu1,mu1)) then
+                                        do mu2 = 1, n_mode
+                                        do nu2 = 1, n_mode
+                                        if (degs(q2,nu2,mu2)) then
+                                        do mu5 = 1, n_mode
+                                        do nu5 = 1, n_mode
+                                        if (degs(q5_1,nu5,mu5)) then
+                                        do mu6 = 1, n_mode
+                                        mumu1 = [mu1,mu2,mu5,mu6]
+                                        do nu6 = 1, n_mode
+                                        nunu = [nu1,nu2,nu5,nu6]
+                                        if (degs(q6_1,nu6,mu6)) then
+                                            ktea1 = &
+P(q1_ref,mumu1(perms(iperm_1+1,1)),nunu(perms(iperm_1+1,1)),isym_1)*&
+CONJG(P(q2_ref,mumu1(perms(iperm_1+1,2)),nunu(perms(iperm_1+1,2)),isym_1))*&
+CONJG(P(q5_1ref,mumu1(perms(iperm_1+1,3)),nunu(perms(iperm_1+1,3)),isym_1))*&
+P(q6_1ref,mumu1(perms(iperm_1+1,4)),nunu(perms(iperm_1+1,4)),isym_1)
+                                            if (iperm_1 == 0) then
+                                                W1 = &
+ktea1*wsq2(rq4_1,nunu(perms(iperm_1+1,1)),nunu(perms(iperm_1+1,2)),nunu(perms(iperm_1+1,3)),nunu(perms(iperm_1+1,4)))
+                                            elseif (iperm_1 == 1) then
+                                                W1 = &
+CONJG(ktea1*wsq2(rq4_1,nunu(perms(iperm_1+1,1)),nunu(perms(iperm_1+1,2)),nunu(perms(iperm_1+1,3)),nunu(perms(iperm_1+1,4))))
+                                            elseif (iperm_1 == 2) then
+                                                W1 = &
+CONJG(ktea1*wsq2(rq4_1,nunu(perms(iperm_1+1,1)),nunu(perms(iperm_1+1,2)),nunu(perms(iperm_1+1,3)),nunu(perms(iperm_1+1,4))))
+                                            elseif (iperm_1 == 3) then
+                                                W1 = &
+ktea1*wsq2(rq4_1,nunu(perms(iperm_1+1,1)),nunu(perms(iperm_1+1,2)),nunu(perms(iperm_1+1,3)),nunu(perms(iperm_1+1,4)))
+                                            elseif (iperm_1 == 4) then
+                                                W1 = &
+ktea1*wsq2(rq4_1,nunu(perms(iperm_1+1,1)),nunu(perms(iperm_1+1,2)),nunu(perms(iperm_1+1,3)),nunu(perms(iperm_1+1,4)))
+                                            elseif (iperm_1 == 5) then
+                                                W1 = &
+CONJG(ktea1*wsq2(rq4_1,nunu(perms(iperm_1+1,1)),nunu(perms(iperm_1+1,2)),nunu(perms(iperm_1+1,3)),nunu(perms(iperm_1+1,4))))
+                                            elseif (iperm_1 == 6) then
+                                                W1 = &
+CONJG(ktea1*wsq2(rq4_1,nunu(perms(iperm_1+1,1)),nunu(perms(iperm_1+1,2)),nunu(perms(iperm_1+1,3)),nunu(perms(iperm_1+1,4))))
+                                            elseif (iperm_1 == 7) then
+                                                W1 = &
+ktea1*wsq2(rq4_1,nunu(perms(iperm_1+1,1)),nunu(perms(iperm_1+1,2)),nunu(perms(iperm_1+1,3)),nunu(perms(iperm_1+1,4)))
+                                            elseif (iperm_1 == 8) then
+                                                W1 = &
+ktea1*wsq2(rq4_1,nunu(perms(iperm_1+1,1)),nunu(perms(iperm_1+1,2)),nunu(perms(iperm_1+1,3)),nunu(perms(iperm_1+1,4)))
+                                            elseif (iperm_1 == 9) then
+                                                W1 = &
+CONJG(ktea1*wsq2(rq4_1,nunu(perms(iperm_1+1,1)),nunu(perms(iperm_1+1,2)),nunu(perms(iperm_1+1,3)),nunu(perms(iperm_1+1,4))))
+                                            elseif (iperm_1 == 10) then
+                                                W1 = &
+CONJG(ktea1*wsq2(rq4_1,nunu(perms(iperm_1+1,1)),nunu(perms(iperm_1+1,2)),nunu(perms(iperm_1+1,3)),nunu(perms(iperm_1+1,4))))
+                                            elseif (iperm_1 == 11) then
+                                                W1 = &
+ktea1*wsq2(rq4_1,nunu(perms(iperm_1+1,1)),nunu(perms(iperm_1+1,2)),nunu(perms(iperm_1+1,3)),nunu(perms(iperm_1+1,4)))
+                                            end if
+                                            do mu3 = 1, n_mode
+                                            do lambda3 = 1, n_mode
+                                            if (degs(q3,lambda3,mu3)) then
+                                            do mu4 = 1, n_mode
+                                            do lambda4 = 1, n_mode
+                                            mumu2 = [mu5,mu6,mu3,mu4]
+                                            if (degs(q4,lambda4,mu4)) then
+                                            do lambda5 = 1, n_mode
+                                            if (degs(q5_2,lambda5,mu5)) then
+                                            do lambda6 = 1, n_mode
+                                            lala = [lambda5,lambda6,lambda3,lambda4]
+                                            if (degs(q6_2,lambda6,mu6)) then
+                                                ktea2 = &
+P(q5_2ref,mumu2(perms(iperm_2+1,1)),lala(perms(iperm_2+1,1)),isym_2)*&
+CONJG(P(q6_2ref,mumu2(perms(iperm_2+1,2)),lala(perms(iperm_2+1,2)),isym_2))*&
+CONJG(P(q3_ref,mumu2(perms(iperm_2+1,3)),lala(perms(iperm_2+1,3)),isym_2))*&
+P(q4_ref,mumu2(perms(iperm_2+1,4)),lala(perms(iperm_2+1,4)),isym_2)
+                                                if (iperm_2 == 0) then
+                                                    W2 = &
+ktea2*wsq1(rq4_2,lala(perms(iperm_2+1,1)),lala(perms(iperm_2+1,2)),lala(perms(iperm_2+1,3)),lala(perms(iperm_2+1,4)))
+                                                elseif (iperm_2 == 1) then
+                                                    W2 = &
+CONJG(ktea2*wsq1(rq4_2,lala(perms(iperm_2+1,1)),lala(perms(iperm_2+1,2)),lala(perms(iperm_2+1,3)),lala(perms(iperm_2+1,4))))
+                                                elseif (iperm_2 == 2) then
+                                                    W2 = &
+CONJG(ktea2*wsq1(rq4_2,lala(perms(iperm_2+1,1)),lala(perms(iperm_2+1,2)),lala(perms(iperm_2+1,3)),lala(perms(iperm_2+1,4))))
+                                                elseif (iperm_2 == 3) then
+                                                    W2 = &
+ktea2*wsq1(rq4_2,lala(perms(iperm_2+1,1)),lala(perms(iperm_2+1,2)),lala(perms(iperm_2+1,3)),lala(perms(iperm_2+1,4)))
+                                                elseif (iperm_2 == 4) then
+                                                    W2 = &
+ktea2*wsq1(rq4_2,lala(perms(iperm_2+1,1)),lala(perms(iperm_2+1,2)),lala(perms(iperm_2+1,3)),lala(perms(iperm_2+1,4)))
+                                                elseif (iperm_2 == 5) then
+                                                    W2 = &
+CONJG(ktea2*wsq1(rq4_2,lala(perms(iperm_2+1,1)),lala(perms(iperm_2+1,2)),lala(perms(iperm_2+1,3)),lala(perms(iperm_2+1,4))))
+                                                elseif (iperm_2 == 6) then
+                                                    W2 = &
+CONJG(ktea2*wsq1(rq4_2,lala(perms(iperm_2+1,1)),lala(perms(iperm_2+1,2)),lala(perms(iperm_2+1,3)),lala(perms(iperm_2+1,4))))
+                                                elseif (iperm_2 == 7) then
+                                                    W2 = &
+ktea2*wsq1(rq4_2,lala(perms(iperm_2+1,1)),lala(perms(iperm_2+1,2)),lala(perms(iperm_2+1,3)),lala(perms(iperm_2+1,4)))
+                                                elseif (iperm_2 == 8) then
+                                                    W2 = &
+ktea2*wsq1(rq4_2,lala(perms(iperm_2+1,1)),lala(perms(iperm_2+1,2)),lala(perms(iperm_2+1,3)),lala(perms(iperm_2+1,4)))
+                                                elseif (iperm_2 == 9) then
+                                                    W2 = &
+CONJG(ktea2*wsq1(rq4_2,lala(perms(iperm_2+1,1)),lala(perms(iperm_2+1,2)),lala(perms(iperm_2+1,3)),lala(perms(iperm_2+1,4))))
+                                                elseif (iperm_2 == 10) then
+                                                    W2 = &
+CONJG(ktea2*wsq1(rq4_2,lala(perms(iperm_2+1,1)),lala(perms(iperm_2+1,2)),lala(perms(iperm_2+1,3)),lala(perms(iperm_2+1,4))))
+                                                elseif (iperm_2 == 11) then
+                                                    W2 = &
+ktea2*wsq1(rq4_2,lala(perms(iperm_2+1,1)),lala(perms(iperm_2+1,2)),lala(perms(iperm_2+1,3)),lala(perms(iperm_2+1,4)))
+                                                end if
+                                                wsqn(rq4_0,mu1,mu2,mu3,mu4) = &
+wsqn(rq4_0,mu1,mu2,mu3,mu4) + 0.5d0*F(q5_1,q6_1,mu5,mu6)*W1*W2
+                                            end if
+                                            end do
+                                            end if
+                                            end do
+                                            end if
+                                            end do
+                                            end do
+                                            end if
+                                            end do
+                                            end do
+                                        end if
+                                        end do
+                                        end do
+                                        end if
+                                        end do
+                                        end do
+                                        end if
+                                        end do
+                                        end do
+                                        end if
+                                        end do
+                                        end do
+                                        !$omp end do
+                                        !$omp end parallel
+                                    end if
+                                end if
+                            end do  
+                        end do
+                    end if
+                end do
+            end do
+        end do
+        wsq_scf = wsq_scf*(1-alpha_mix) +alpha_mix*(wsq1+wsqn)
+        if (verbose) then
+		    print*, "    MAXVAL(|W(n)-W(n-1)|)", MAXVAL(ABS(wsq_scf-wsq2)), ". Threshold (weighted by alpha_mix)=", eps*alpha_mix
+            print*, ""
+        end if
+        if (MAXVAL(ABS(wsq_scf-wsq2)) < eps*alpha_mix) exit do1
+    end do do1
+    if (verbose) then
+        tend = omp_get_wtime()
+        print*, "Convergence found with", iter, "iterations"
+        print*, ""
+        print*, "Elapsed time inside get_scf_wsq():", tend-tstart
+		print*, "=======================     DONE     ======================="
+        print*, ""
+	endif
+
+end subroutine get_scf_wsq
+
+subroutine get_sum_wsq(wsq1, F, refq4, refq4o, norbitq4, P, degs, verbose, &
+wsq_scf, nrefq4, n_mode, iq, dimq4, nsym)
+    
+    implicit none
+
+    complex(8), dimension(nrefq4,n_mode,n_mode,n_mode,n_mode), intent(in) :: wsq1
+
+    double precision, dimension(iq, iq, n_mode, n_mode), intent(in) :: F
+
+	integer, dimension(nrefq4,dimq4,4), intent(in) :: refq4
+    integer, dimension(nrefq4,dimq4,2), intent(in) :: refq4o
+    integer, dimension(nrefq4), intent(in) :: norbitq4
+
+	complex(8), dimension(iq, n_mode, n_mode, nsym), intent(in) :: P
+    logical, dimension(iq, n_mode, n_mode), intent(in) :: degs
+    logical, intent(in) :: verbose
+
+    complex(8), dimension(nrefq4,n_mode,n_mode,n_mode,n_mode), intent(out) :: wsq_scf
+
+    complex(8), dimension(nrefq4,n_mode,n_mode,n_mode,n_mode) :: wsq2
+	complex(8), dimension(nrefq4,n_mode,n_mode,n_mode,n_mode) :: wsqn
+
+    double precision :: tstart, tend
+
+    integer, dimension(12,4) :: perms
+    integer, dimension(4) :: nunu, lala, mumu1, mumu2
+    integer :: nrefq4, n_mode, iq, dimq4, nsym
+    integer :: mu1,mu2,mu3,mu4,mu5,mu6,iter
+    integer :: rq4_0,rq4_1,rq4_2,q4i_1,q4i_2,q1,q2,q3,q4,q5_1,q6_1,q5_2,q6_2
+	integer :: q1_ref, q2_ref, q3_ref, q4_ref, q5_1ref, q5_2ref, q6_1ref, q6_2ref
+	integer :: nu1,nu2,nu5,nu6,lambda3,lambda4,lambda5,lambda6
+    integer :: q10,q20,q30,q40,q5,q6,iperm_1,iperm_2,isym_1,isym_2
+
+	complex(8) :: ktea1, ktea2, W1, W2
+    double precision, parameter :: eps = 1e-6
     integer, parameter :: maxiter = 50
 
     perms = reshape([ &
@@ -577,8 +831,8 @@ wsq_scf, nrefq4, n_mode, iq, dimq4, nsym)
 
     if (verbose) then
         tstart = omp_get_wtime()
-        print*, "======================= get_scf_wsq() ======================="
-        print*, "Self-consintent loop to compute \Theta(-q1,q2,q3,-q4)."
+        print*, "======================= get_sum_wsq() ======================="
+        print*, "Looking where to truncate the analytical sum of \Theta(-q1,q2,q3,-q4)."
         print*, ""
     end if
 	wsq_scf = wsq1
@@ -773,11 +1027,15 @@ wsqn(rq4_0,mu1,mu2,mu3,mu4) + 0.5d0*F(q5_1,q6_1,mu5,mu6)*W1*W2
             end do
         end do
         if (verbose) then
-		    print*, "    MAXVAL(W^{n})=", MAXVAL(ABS(wsqn)), ". Threshold=", eps
+		    print*, "    MAXVAL(|W^{n}|)=", MAXVAL(ABS(wsqn)), ". Threshold=", eps
             print*, ""
         end if
 		wsq_scf = wsq_scf + wsqn
         if (MAXVAL(ABS(wsqn)) < eps) exit do1
+        if (MAXVAL(ABS(wsqn)) > MAXVAL(ABS(wsq2))) then
+            print*, "W^{(n)} is not decaying. Returning first order correction..."
+            wsqn=wsq1
+        end if
     end do do1
     if (verbose) then
         tend = omp_get_wtime()
@@ -788,7 +1046,7 @@ wsqn(rq4_0,mu1,mu2,mu3,mu4) + 0.5d0*F(q5_1,q6_1,mu5,mu6)*W1*W2
         print*, ""
 	endif
 
-end subroutine get_scf_wsq
+end subroutine get_sum_wsq
 
 subroutine get_indep2fc( &
         vs_red, refq2, refq2o, norbitq2, orbit2t, n_indep_elem, indep_elem, rot_cart, mapping, map_uc, map_tr, T_list, q_list, F, &

@@ -3846,7 +3846,7 @@ Error while loading the julia module.
             return dyn_hessian, d3* 2.0 # Ha to Ry
         return dyn_hessian
 
-    def get_free_energy_hessian_dev(self, include_v4 = False, get_full_hessian = True, verbose = False):
+    def get_free_energy_hessian_dev(self, include_v4 = False, do_scf = True, get_full_hessian = True, verbose = False):
         """
         Dev function.
 
@@ -4059,12 +4059,14 @@ Error while loading the julia module.
             degs = qClassify.find_degeneracies(trs_wq)
             Pmn = qClassify.construct_Pmn(mapping, orbitq1a, orbitq1s, trs_polvecs, rot_cart)
             
-            ws_red_scf = SCHAModules.module_hess.get_scf_wsq(ws_red, trs_gq, refq4, refq4o, norbitq4, Pmn, degs, verbose)
-
             v_red, ref_3fc = SCHAModules.module_hess.get_v3_red(nat, norbit3, orbit3a, orbit3s, indep_3fc_elem, n_indep_3fc_elem, kernel_3fc, rot_3fc, self.ur, self.upsilon, f, self.rho, log_err, self.s_inv_cart, self.irt, self.translations_irt)
             vs = SCHAModules.module_hess.get_all_vsq(trs_l, v_red, map_uc)
-            
-            indep_fc4 = SCHAModules.module_hess.get_indep2fc_v4(vs, ws_red_scf, refq4, refq4o, norbitq4, orbit2a, n_indep_elem, indep_elem, trs_gq, Pmn, degs, mapping, rot_cart, verbose)
+
+            if do_scf:
+                ws_red_scf = SCHAModules.module_hess.get_scf_wsq(ws_red, trs_gq, refq4, refq4o, norbitq4, Pmn, degs, verbose)
+                indep_fc4 = SCHAModules.module_hess.get_indep2fc_v4(vs, ws_red_scf, refq4, refq4o, norbitq4, orbit2a, n_indep_elem, indep_elem, trs_gq, Pmn, degs, mapping, rot_cart, verbose)
+            else:
+                indep_fc4 = SCHAModules.module_hess.get_indep2fc_v4(vs, ws_red, refq4, refq4o, norbitq4, orbit2a, n_indep_elem, indep_elem, trs_gq, Pmn, degs, mapping, rot_cart, verbose)
             indep_fc += indep_fc4
         phi_sc_odd = np.zeros((n_modes, n_modes), dtype = np.double)
         for ref2 in range(nref2):
