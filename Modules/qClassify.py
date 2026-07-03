@@ -52,7 +52,7 @@ def map_singlet(q_list, q_list_frac, rcell, rot_cart):
     q_list_frac_fixed = np.empty(q_list_frac.shape)
     its_zb = np.empty(q_list_frac.shape[0], dtype=np.int8)
     for qi,q in enumerate(q_list):
-        q_list_frac_fixed[qi] = CC.Methods.cart_to_cryst(rcell, _map_q_to_1st_bz(rcell, q))
+        q_list_frac_fixed[qi] = np.round(CC.Methods.cart_to_cryst(rcell, _map_q_to_1st_bz(rcell, q)),6)
         if np.all((np.abs(np.round(2*q_list_frac_fixed[qi], 6))%1)<1e-6):
             its_zb[qi] = 0
         else:
@@ -70,7 +70,7 @@ def map_singlet(q_list, q_list_frac, rcell, rot_cart):
         for isym in range(rot_cart.shape[0]):
             q_sym_cart = rot_cart[isym] @ q
             q_sym_cart_1bz = _map_q_to_1st_bz(rcell, q_sym_cart)
-            q_sym = CC.Methods.cart_to_cryst(rcell, q_sym_cart_1bz)
+            q_sym = np.round(CC.Methods.cart_to_cryst(rcell, q_sym_cart_1bz),6)
             match = np.all(np.abs(q_list_frac_fixed-q_sym)<1e-3, axis=1)
             qii = np.where(match)
             mapping[qi,isym] = qii[0][0]

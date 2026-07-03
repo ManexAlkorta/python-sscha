@@ -3846,7 +3846,7 @@ Error while loading the julia module.
             return dyn_hessian, d3* 2.0 # Ha to Ry
         return dyn_hessian
 
-    def get_free_energy_hessian_dev(self, include_v4 = False, do_scf = True, get_full_hessian = True, verbose = False):
+    def get_free_energy_hessian_dev(self, include_v4 = False, do_scf = True, eps = 1e-6, alpha_mix=0.3, get_full_hessian = True, verbose = False):
         """
         Dev function.
 
@@ -3865,6 +3865,15 @@ Error while loading the julia module.
             include_v4 : bool
                 If True we include the fourth order force constant matrix.
                 This requires a lot of memory
+            do_scf : bool
+                If True, the W matrix is self-consitently converged. Otherwise, just the first
+                correction of the fourth-order is considered (False often enough in practice).
+            eps : float
+                Precision to reach for the max value of |W|. It is later weighted by alpha-mix
+                in practice to ensure convergence. Defaults to 1e-6.
+            alpha_mix : float
+                Mixing parameter used in the scf loop of W, where
+                W(n+1)=W(n)(1-alpha_mix)+alpha_mix*W(n+1). Default to 0.3.
             get_full_hessian : bool
                 If True the full hessian matrix is returned, if false, only the correction to
                 the SSCHA dynamical matrix is returned.
@@ -4039,10 +4048,10 @@ Error while loading the julia module.
         nat = self.current_dyn.structure.N_atoms
         n_modes = self.current_dyn.structure.N_atoms*mod[0]*mod[1]*mod[2]*3
 
-        ref_3fc = SCHAModules.module_hess.get_ref3fc(nat, orbit3a, indep_3fc_elem, n_indep_3fc_elem, kernel_3fc, rot_3fc, self.ur, self.upsilon, f, self.rho, log_err, self.s_inv_cart, self.irt, self.translations_irt, verbose)
+        ref_3fc = SCHAModules.module_hess.get_ref3fc(nat, orbit3a, indep_3fc_elem, n_indep_3fc_elem, kernel_3fc, rot_3fc, self.ur, self.upsilon, f, self.rho, log_err, self.s_inv_cart, self.irt, self.translations_irt, True)
 
         vs_red = np.empty([nrefq2,nat*3,nat*3,nat*3], dtype=np.complex128)
-        vs_red = SCHAModules.module_hess.get_ref_vsq(refq2,trs_l,rot_3fc,ref_3fc,mapping_triplet,verbose)
+        vs_red = SCHAModules.module_hess.get_ref_vsq(refq2,trs_l,rot_3fc,ref_3fc,mapping_triplet,True)
         trs_gq, daq = SCHAModules.get_gq(trs_aq, trs_wq, transq, self.current_T)
         indep_fc = SCHAModules.module_hess.get_indep2fc(vs_red, refq2, refq2o, norbitq2, orbit2a, n_indep_elem, indep_elem, rot_cart, mapping, map_uc, map_tr, T_list, trs_qlist, trs_gq, verbose)
         
@@ -4051,10 +4060,10 @@ Error while loading the julia module.
 
             orbit4t, orbit4o, norbit_4, indep_4fc_elem, n_indep_4fc_elem, kernel_4fc, rot_4fc, mapping_quadruplet = Classify.recognize_quadruplet(self.current_dyn, mapping, map_uc, verbose)
 
-            ref_4fc = SCHAModules.module_hess.get_ref4fc(orbit4t, indep_4fc_elem, n_indep_4fc_elem, kernel_4fc, rot_4fc, self.ur, self.upsilon, f, self.rho, log_err, self.s_inv_cart, self.irt, self.translations_irt, verbose)
+            ref_4fc = SCHAModules.module_hess.get_ref4fc(orbit4t, indep_4fc_elem, n_indep_4fc_elem, kernel_4fc, rot_4fc, self.ur, self.upsilon, f, self.rho, log_err, self.s_inv_cart, self.irt, self.translations_irt, True)
             
             ws_red = np.zeros([nrefq4,nat*3,nat*3,nat*3,nat*3], dtype=np.complex128)
-            ws_red = SCHAModules.module_hess.get_ref_wsq(refq4,trs_l,rot_4fc,ref_4fc,mapping_quadruplet,verbose)
+            ws_red = SCHAModules.module_hess.get_ref_wsq(refq4,trs_l,rot_4fc,ref_4fc,mapping_quadruplet,True)
 
             degs = qClassify.find_degeneracies(trs_wq)
             Pmn = qClassify.construct_Pmn(mapping, orbitq1a, orbitq1s, trs_polvecs, rot_cart)
@@ -4063,7 +4072,7 @@ Error while loading the julia module.
             vs = SCHAModules.module_hess.get_all_vsq(trs_l, v_red, map_uc)
 
             if do_scf:
-                ws_red_scf = SCHAModules.module_hess.get_scf_wsq(ws_red, trs_gq, refq4, refq4o, norbitq4, Pmn, degs, verbose)
+                ws_red_scf = SCHAModules.module_hess.get_scf_wsq(ws_red, trs_gq, refq4, refq4o, norbitq4, Pmn, degs, True, eps, alpha_mix)
                 indep_fc4 = SCHAModules.module_hess.get_indep2fc_v4(vs, ws_red_scf, refq4, refq4o, norbitq4, orbit2a, n_indep_elem, indep_elem, trs_gq, Pmn, degs, mapping, rot_cart, verbose)
             else:
                 indep_fc4 = SCHAModules.module_hess.get_indep2fc_v4(vs, ws_red, refq4, refq4o, norbitq4, orbit2a, n_indep_elem, indep_elem, trs_gq, Pmn, degs, mapping, rot_cart, verbose)

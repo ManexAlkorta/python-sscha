@@ -277,6 +277,7 @@ subroutine get_ref_vsq(refq2,pol_vecs,rot_3fc,ref_3fc,mapping_triplet,verbose,v1
 	complex, dimension(nrefq2, n_mode, n_mode, n_mode), intent(out) :: v1
 
 	double precision, dimension(27) :: aux_3fc
+    double precision :: tstart, tend
 	integer :: n_mode_sc, n_mode, ns, qmu, qnu, mu, nu, at3, iq, index, nrefq2, dimq2, i,j, rq2
 	integer :: nperm,nsym,nref3,ref3,equiv,iperm,isym,a,b,c,alpha,beta,gamma,nat,nat_sc
 	complex, dimension(:), allocatable :: laux1, laux2
@@ -293,13 +294,17 @@ subroutine get_ref_vsq(refq2,pol_vecs,rot_3fc,ref_3fc,mapping_triplet,verbose,v1
 	allocate(laux2(n_mode_sc))
 
     if (verbose) then
-        print*, "======================= get_ref_vsq() ======================="
-        print*, "Computing all reference V_{a}^{\alpha}(q1,q2)."
+        tstart = omp_get_wtime()
+        print*, "======================= get_ref_vsq() ======================"
+        print*, ""
+        print*, "        Computing all reference V_{a}^{\alpha}(q1,q2)."
+        print*, ""
     end if
     v1 = 0
     !$omp parallel private (qmu,qnu,at3,a,alpha,mu,laux1,lres1,ref3,equiv,iperm,isym,i,j)
     !$omp do schedule (dynamic, 1) private (b,c,aux_3fc,beta,gamma,index,nu,laux2)
     do rq2 = 1, nrefq2
+        print*, "    Calculating V(rq2=", rq2,") out of", nrefq2
         qmu = refq2(rq2,1,1)
         qnu = refq2(rq2,1,2)
         do at3 = 1, n_mode
@@ -341,6 +346,9 @@ lres1(mu,3*c+gamma+1) + aux_3fc(index) * pol_vecs(qmu+1,mu,3*b+beta+1)
     !$omp end do
     !$omp end parallel
 	if (verbose) then
+        tend = omp_get_wtime()
+        print*, ""
+        print*, "Elapsed time inside get_ref_vsq():", tend-tstart, "seconds."
 		print*, "=======================     DONE     ======================="
         print*, ""
 	endif
@@ -421,9 +429,12 @@ subroutine get_ref_wsq(refq4,pol_vecs,rot_4fc,ref_4fc,mapping_quadruplet,verbose
 
     if (verbose) then
         tstart = omp_get_wtime()
-        print*, "======================= get_ref_wsq() ======================="
-        print*, "Computing the", nrefq4, "reference W(-q1,q2,q3,-q4)."
-        print*, "This might take some time..."
+        print*, "======================= get_ref_wsq() ======================"
+        print*, ""
+        print*, "     Computing the", nrefq4, "reference W(-q1,q2,q3,-q4)."
+        print*, ""
+        print*, " This might take some time..."
+        print*, ""
     end if
 
 	ns = n_mode_sc
@@ -431,6 +442,7 @@ subroutine get_ref_wsq(refq4,pol_vecs,rot_4fc,ref_4fc,mapping_quadruplet,verbose
 	v1 = 0.0d0
     tstart = omp_get_wtime()
     do rq4 = 1, nrefq4
+        print*, "    Calculating W(rq4=", rq4,") out of", nrefq4
 		q1 = refq4(rq4,1,1)+1
 		q2 = refq4(rq4,1,2)+1
 		q3 = refq4(rq4,1,3)+1
@@ -520,13 +532,14 @@ aux_4fc(3*(3*(3*(alpha-1)+beta-1)+gamma-1)+delta)
 	end do
     if (verbose) then
         tend = omp_get_wtime()
-        print*, "Elapsed time inside get_ref_wsq():", tend-tstart
+        print*, ""
+        print*, "Elapsed time inside get_ref_wsq():", tend-tstart, "seconds."
 		print*, "=======================     DONE     ======================="
         print*, ""
 	endif
 end subroutine get_ref_wsq
 
-subroutine get_scf_wsq(wsq1, F, refq4, refq4o, norbitq4, P, degs, verbose, &
+subroutine get_scf_wsq(wsq1, F, refq4, refq4o, norbitq4, P, degs, verbose, eps, alpha_mix, &
 wsq_scf, nrefq4, n_mode, iq, dimq4, nsym)
     
     implicit none
@@ -542,6 +555,8 @@ wsq_scf, nrefq4, n_mode, iq, dimq4, nsym)
 	complex(8), dimension(iq, n_mode, n_mode, nsym), intent(in) :: P
     logical, dimension(iq, n_mode, n_mode), intent(in) :: degs
     logical, intent(in) :: verbose
+
+    double precision, intent(in) :: eps, alpha_mix
 
     complex(8), dimension(nrefq4,n_mode,n_mode,n_mode,n_mode), intent(out) :: wsq_scf
 
@@ -560,8 +575,6 @@ wsq_scf, nrefq4, n_mode, iq, dimq4, nsym)
     integer :: q10,q20,q30,q40,q5,q6,iperm_1,iperm_2,isym_1,isym_2
 
 	complex(8) :: ktea1, ktea2, W1, W2
-    double precision, parameter :: eps = 1e-6
-    double precision, parameter :: alpha_mix = 0.5d0
     integer, parameter :: maxiter = 50
 
     perms = reshape([ &
@@ -575,12 +588,16 @@ wsq_scf, nrefq4, n_mode, iq, dimq4, nsym)
     if (verbose) then
         tstart = omp_get_wtime()
         print*, "======================= get_scf_wsq() ======================="
-        print*, "Self-consintent loop to compute \Theta(-q1,q2,q3,-q4)."
+        print*, ""
+        print*, "    Self-consintent loop to compute \Theta(-q1,q2,q3,-q4)."
+        print*, ""
+        print*, "        eps=", eps, "        alpha_mix=", alpha_mix
         print*, ""
     end if
     do1 : do iter = 1, maxiter
         if (verbose) then
             print*, "    Iteration", iter
+            print*, "    ---------------------"
         end if
         if (iter == 1) then 
             wsq2 = wsq1
@@ -779,7 +796,7 @@ wsqn(rq4_0,mu1,mu2,mu3,mu4) + 0.5d0*F(q5_1,q6_1,mu5,mu6)*W1*W2
         tend = omp_get_wtime()
         print*, "Convergence found with", iter, "iterations"
         print*, ""
-        print*, "Elapsed time inside get_scf_wsq():", tend-tstart
+        print*, "Elapsed time inside get_scf_wsq():", tend-tstart, "seconds."
 		print*, "=======================     DONE     ======================="
         print*, ""
 	endif
@@ -839,6 +856,7 @@ wsq_scf, nrefq4, n_mode, iq, dimq4, nsym)
     do1 : do iter = 1, maxiter
         if (verbose) then
             print*, "    Iteration", iter
+            print*, "    -----------------------"
         end if
         if (iter == 1) then 
             wsq2 = wsq1
@@ -1041,7 +1059,7 @@ wsqn(rq4_0,mu1,mu2,mu3,mu4) + 0.5d0*F(q5_1,q6_1,mu5,mu6)*W1*W2
         tend = omp_get_wtime()
         print*, "Convergence found with", iter, "iterations"
         print*, ""
-        print*, "Elapsed time inside get_scf_wsq():", tend-tstart
+        print*, "Elapsed time inside get_scf_wsq():", tend-tstart, "seconds."
 		print*, "=======================     DONE     ======================="
         print*, ""
 	endif
@@ -1119,8 +1137,13 @@ exp(-2*j*pi*dot_product(q_list(refq2(rq2,1,1)+1,:)-q_list(refq2(rq2,1,2)+1,:),T_
                             Vsb = &
 dot_product(rot_cart(isym+1,beta+1,:),vs_q(nat2p_uc*3+1:(nat2p_uc+1)*3+1)) * &
 exp(-2*j*pi*dot_product(q_list(refq2(rq2,1,1)+1,:)-q_list(refq2(rq2,1,2)+1,:),T_list(map_tr(nat2p+1)+1,:)))
-                            indep_fc(ref2,i) = indep_fc(ref2,i) + &
+                            if (iperm == 0) then
+                                indep_fc(ref2,i) = indep_fc(ref2,i) + &
 real(0.5d0*F(refq2(rq2,1,1)+1,refq2(rq2,1,2)+1,munu(permutations(iperm+1,1)), munu(permutations(iperm+1,2)))*Vsa*CONJG(Vsb))
+                            else 
+                                indep_fc(ref2,i) = indep_fc(ref2,i) + &
+real(0.5d0*F(refq2(rq2,1,1)+1,refq2(rq2,1,2)+1,munu(permutations(iperm+1,1)), munu(permutations(iperm+1,2)))*CONJG(Vsa)*Vsb)
+                            end if
                         end do
                     end do
                 end do
