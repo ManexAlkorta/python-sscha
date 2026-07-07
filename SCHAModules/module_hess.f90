@@ -225,7 +225,7 @@ subroutine get_ref4fc(orbit4t, indep_4fc_elem, n_indep_4fc_elem, kernel_4fc, rot
 
     if (verbose) then
         print *, "======================= get_ref4fc() ======================= "
-        print *, "Computing the independent elements for the 4th order FCs."
+        print *, "  Computing the independent elements for the 4th order FCs"
     end if
 
     !$omp parallel private (i, nat1, nat2, nat3, nat4, alpha, beta, gamma, delta)
@@ -297,14 +297,15 @@ subroutine get_ref_vsq(refq2,pol_vecs,rot_3fc,ref_3fc,mapping_triplet,verbose,v1
         tstart = omp_get_wtime()
         print*, "======================= get_ref_vsq() ======================"
         print*, ""
-        print*, "        Computing all reference V_{a}^{\alpha}(q1,q2)."
+        print*, "        Computing all reference V_{a}^{\alpha}(q1,q2)"
         print*, ""
     end if
     v1 = 0
     !$omp parallel private (qmu,qnu,at3,a,alpha,mu,laux1,lres1,ref3,equiv,iperm,isym,i,j)
     !$omp do schedule (dynamic, 1) private (b,c,aux_3fc,beta,gamma,index,nu,laux2)
     do rq2 = 1, nrefq2
-        print*, "    Calculating V(rq2=", rq2,") out of", nrefq2
+        print "(A, I8, A, I8)", &
+"    Calculating V(rq2=", rq2,") out of", nrefq2
         qmu = refq2(rq2,1,1)
         qnu = refq2(rq2,1,2)
         do at3 = 1, n_mode
@@ -348,7 +349,7 @@ lres1(mu,3*c+gamma+1) + aux_3fc(index) * pol_vecs(qmu+1,mu,3*b+beta+1)
 	if (verbose) then
         tend = omp_get_wtime()
         print*, ""
-        print*, "Elapsed time inside get_ref_vsq():", tend-tstart, "seconds."
+        print "(A, ES16.6,A)", "  Elapsed time inside get_ref_vsq():", tend-tstart, " seconds"
 		print*, "=======================     DONE     ======================="
         print*, ""
 	endif
@@ -431,7 +432,8 @@ subroutine get_ref_wsq(refq4,pol_vecs,rot_4fc,ref_4fc,mapping_quadruplet,verbose
         tstart = omp_get_wtime()
         print*, "======================= get_ref_wsq() ======================"
         print*, ""
-        print*, "     Computing the", nrefq4, "reference W(-q1,q2,q3,-q4)."
+        print "(A, I8, A)", &
+"   Computing the", nrefq4, " reference W^{(1)}(q1,q2,q3,q4)"
         print*, ""
         print*, " This might take some time..."
         print*, ""
@@ -442,7 +444,7 @@ subroutine get_ref_wsq(refq4,pol_vecs,rot_4fc,ref_4fc,mapping_quadruplet,verbose
 	v1 = 0.0d0
     tstart = omp_get_wtime()
     do rq4 = 1, nrefq4
-        print*, "    Calculating W(rq4=", rq4,") out of", nrefq4
+        print "(A, I8, A, I8)", "    Calculating W(rq4=", rq4,") out of", nrefq4
 		q1 = refq4(rq4,1,1)+1
 		q2 = refq4(rq4,1,2)+1
 		q3 = refq4(rq4,1,3)+1
@@ -533,7 +535,7 @@ aux_4fc(3*(3*(3*(alpha-1)+beta-1)+gamma-1)+delta)
     if (verbose) then
         tend = omp_get_wtime()
         print*, ""
-        print*, "Elapsed time inside get_ref_wsq():", tend-tstart, "seconds."
+        print "(A, ES16.6,A)", "  Elapsed time inside get_ref_wsq():", tend-tstart, " seconds"
 		print*, "=======================     DONE     ======================="
         print*, ""
 	endif
@@ -565,7 +567,7 @@ wsq_scf, nrefq4, n_mode, iq, dimq4, nsym)
 
     double precision :: tstart, tend
 
-    integer, dimension(12,4) :: perms
+    integer, dimension(8,4) :: perms
     integer, dimension(4) :: nunu, lala, mumu1, mumu2
     integer :: nrefq4, n_mode, iq, dimq4, nsym
     integer :: mu1,mu2,mu3,mu4,mu5,mu6,iter
@@ -574,29 +576,31 @@ wsq_scf, nrefq4, n_mode, iq, dimq4, nsym)
 	integer :: nu1,nu2,nu5,nu6,lambda3,lambda4,lambda5,lambda6
     integer :: q10,q20,q30,q40,q5,q6,iperm_1,iperm_2,isym_1,isym_2
 
+    logical :: its_conv
 	complex(8) :: ktea1, ktea2, W1, W2
-    integer, parameter :: maxiter = 50
+    integer, parameter :: maxiter = 10
 
     perms = reshape([ &
         1,2,3,4, 2,1,4,3, 3,4,1,2, 4,3,2,1, &
-        1,3,2,4, 3,1,4,2, 2,4,1,3, 4,2,3,1, &
-        4,2,3,1, 2,4,1,3, 3,1,4,2, 1,3,2,4], &
-    [12,4], order=[2,1])
+        1,3,2,4, 3,1,4,2, 2,4,1,3, 4,2,3,1], &
+    [8,4], order=[2,1])
 
     wsq_scf = wsq1
 
+    its_conv = .true.
     if (verbose) then
         tstart = omp_get_wtime()
         print*, "======================= get_scf_wsq() ======================="
         print*, ""
-        print*, "    Self-consintent loop to compute \Theta(-q1,q2,q3,-q4)."
+        print*, "        Self-consintent loop to compute W(q1,q2,q3,q4)"
         print*, ""
-        print*, "        eps=", eps, "        alpha_mix=", alpha_mix
+        print "(A, ES16.6, A, ES16.6)", &
+"        eps=", eps, ";  alpha_mix=", alpha_mix
         print*, ""
     end if
     do1 : do iter = 1, maxiter
         if (verbose) then
-            print*, "    Iteration", iter
+            print "(A, I4)", "     Iteration", iter
             print*, "    ---------------------"
         end if
         if (iter == 1) then 
@@ -684,18 +688,6 @@ CONJG(ktea1*wsq2(rq4_1,nunu(perms(iperm_1+1,1)),nunu(perms(iperm_1+1,2)),nunu(pe
                                             elseif (iperm_1 == 7) then
                                                 W1 = &
 ktea1*wsq2(rq4_1,nunu(perms(iperm_1+1,1)),nunu(perms(iperm_1+1,2)),nunu(perms(iperm_1+1,3)),nunu(perms(iperm_1+1,4)))
-                                            elseif (iperm_1 == 8) then
-                                                W1 = &
-ktea1*wsq2(rq4_1,nunu(perms(iperm_1+1,1)),nunu(perms(iperm_1+1,2)),nunu(perms(iperm_1+1,3)),nunu(perms(iperm_1+1,4)))
-                                            elseif (iperm_1 == 9) then
-                                                W1 = &
-CONJG(ktea1*wsq2(rq4_1,nunu(perms(iperm_1+1,1)),nunu(perms(iperm_1+1,2)),nunu(perms(iperm_1+1,3)),nunu(perms(iperm_1+1,4))))
-                                            elseif (iperm_1 == 10) then
-                                                W1 = &
-CONJG(ktea1*wsq2(rq4_1,nunu(perms(iperm_1+1,1)),nunu(perms(iperm_1+1,2)),nunu(perms(iperm_1+1,3)),nunu(perms(iperm_1+1,4))))
-                                            elseif (iperm_1 == 11) then
-                                                W1 = &
-ktea1*wsq2(rq4_1,nunu(perms(iperm_1+1,1)),nunu(perms(iperm_1+1,2)),nunu(perms(iperm_1+1,3)),nunu(perms(iperm_1+1,4)))
                                             end if
                                             do mu3 = 1, n_mode
                                             do lambda3 = 1, n_mode
@@ -738,18 +730,6 @@ CONJG(ktea2*wsq1(rq4_2,lala(perms(iperm_2+1,1)),lala(perms(iperm_2+1,2)),lala(pe
                                                 elseif (iperm_2 == 7) then
                                                     W2 = &
 ktea2*wsq1(rq4_2,lala(perms(iperm_2+1,1)),lala(perms(iperm_2+1,2)),lala(perms(iperm_2+1,3)),lala(perms(iperm_2+1,4)))
-                                                elseif (iperm_2 == 8) then
-                                                    W2 = &
-ktea2*wsq1(rq4_2,lala(perms(iperm_2+1,1)),lala(perms(iperm_2+1,2)),lala(perms(iperm_2+1,3)),lala(perms(iperm_2+1,4)))
-                                                elseif (iperm_2 == 9) then
-                                                    W2 = &
-CONJG(ktea2*wsq1(rq4_2,lala(perms(iperm_2+1,1)),lala(perms(iperm_2+1,2)),lala(perms(iperm_2+1,3)),lala(perms(iperm_2+1,4))))
-                                                elseif (iperm_2 == 10) then
-                                                    W2 = &
-CONJG(ktea2*wsq1(rq4_2,lala(perms(iperm_2+1,1)),lala(perms(iperm_2+1,2)),lala(perms(iperm_2+1,3)),lala(perms(iperm_2+1,4))))
-                                                elseif (iperm_2 == 11) then
-                                                    W2 = &
-ktea2*wsq1(rq4_2,lala(perms(iperm_2+1,1)),lala(perms(iperm_2+1,2)),lala(perms(iperm_2+1,3)),lala(perms(iperm_2+1,4)))
                                                 end if
                                                 wsqn(rq4_0,mu1,mu2,mu3,mu4) = &
 wsqn(rq4_0,mu1,mu2,mu3,mu4) + 0.5d0*F(q5_1,q6_1,mu5,mu6)*W1*W2
@@ -787,16 +767,28 @@ wsqn(rq4_0,mu1,mu2,mu3,mu4) + 0.5d0*F(q5_1,q6_1,mu5,mu6)*W1*W2
         end do
         wsq_scf = wsq_scf*(1-alpha_mix) +alpha_mix*(wsq1+wsqn)
         if (verbose) then
-		    print*, "    MAXVAL(|W(n)-W(n-1)|)", MAXVAL(ABS(wsq_scf-wsq2)), ". Threshold (weighted by alpha_mix)=", eps*alpha_mix
+		    print "(A, ES16.6)", &
+"     MAXVAL(|W(n)-W(n-1)|)             =", MAXVAL(ABS(wsq_scf-wsq2))
+            print "(A, ES16.6)", &
+"     Threshold (weighted by alpha_mix) =", eps*alpha_mix
             print*, ""
         end if
         if (MAXVAL(ABS(wsq_scf-wsq2)) < eps*alpha_mix) exit do1
+        if (iter == maxiter) then
+            wsq_scf = wsq1
+            its_conv = .false.
+        end if
     end do do1
     if (verbose) then
         tend = omp_get_wtime()
-        print*, "Convergence found with", iter, "iterations"
+        if (its_conv) then
+            print "(A, I4, A)", " Convergence found with", iter, " iterations"
+        else
+            print "(A, I4, A)", " Convergence not found with", iter, " iterations"
+            print "(A)", " Returning first order W^{(1)}(q1,q2,q3,q4)"
+        end if
         print*, ""
-        print*, "Elapsed time inside get_scf_wsq():", tend-tstart, "seconds."
+        print "(A, ES16.6,A)", "  Elapsed time inside get_scf_wsq():", tend-tstart, " seconds"
 		print*, "=======================     DONE     ======================="
         print*, ""
 	endif
@@ -1059,7 +1051,7 @@ wsqn(rq4_0,mu1,mu2,mu3,mu4) + 0.5d0*F(q5_1,q6_1,mu5,mu6)*W1*W2
         tend = omp_get_wtime()
         print*, "Convergence found with", iter, "iterations"
         print*, ""
-        print*, "Elapsed time inside get_scf_wsq():", tend-tstart, "seconds."
+        print "(A, ES16.6,A)", "  Elapsed time inside get_scf_wsq():", tend-tstart, " seconds"
 		print*, "=======================     DONE     ======================="
         print*, ""
 	endif
@@ -1299,43 +1291,6 @@ vsa*CONJG(W)*CONJG(vsb))
 F(q10,q20,mu1,mu2) * &
 F(q30,q40,mu3,mu4) * &
 vsa*W*CONJG(vsb))
-                        elseif (iperm == 8) then
-                            vsa= &
-    dot_product(rot_cart(isym+1,alpha,:),vs(3*nat1p+1:3*(nat1p+1)+1,q40,q20,mu4,mu2))
-                            vsb= &
-    dot_product(rot_cart(isym+1,beta,:),vs(3*nat2p+1:3*(nat2p+1)+1,q30,q10,mu3,mu1))
-                            indep_fc(ref2,i) = indep_fc(ref2,i) + real(0.25d0* &
-F(q10,q20,mu1,mu2) * &
-F(q30,q40,mu3,mu4) * &
-vsa*W*CONJG(vsb))
-                        elseif (iperm == 9) then
-                            vsa= &
-    dot_product(rot_cart(isym+1,alpha,:),vs(3*nat1p+1:3*(nat1p+1)+1,q20,q40,mu2,mu4))
-                            vsb= &
-    dot_product(rot_cart(isym+1,beta,:),vs(3*nat2p+1:3*(nat2p+1)+1,q10,q30,mu1,mu3))
-                            indep_fc(ref2,i) = indep_fc(ref2,i) + real(0.25d0* &
-F(q10,q20,mu1,mu2) * &
-F(q30,q40,mu3,mu4) * &
-vsa*W*CONJG(vsb))
-                        elseif (iperm == 10) then
-                            vsa= &
-    dot_product(rot_cart(isym+1,alpha,:),vs(3*nat1p+1:3*(nat1p+1)+1,q30,q10,mu3,mu1))
-                            vsb= &
-    dot_product(rot_cart(isym+1,beta,:),vs(3*nat2p+1:3*(nat2p+1)+1,q40,q20,mu4,mu2))
-                            indep_fc(ref2,i) = indep_fc(ref2,i) + real(0.25d0* &
-F(q10,q20,mu1,mu2) * &
-F(q30,q40,mu3,mu4) * &
-vsa*W*CONJG(vsb))
-                        elseif (iperm == 11) then
-                            vsa= &
-    dot_product(rot_cart(isym+1,alpha,:),vs(3*nat1p+1:3*(nat1p+1)+1,q10,q30,mu1,mu3))
-                            vsb= &
-    dot_product(rot_cart(isym+1,beta,:),vs(3*nat2p+1:3*(nat2p+1)+1,q20,q40,mu2,mu4))
-                            indep_fc(ref2,i) = indep_fc(ref2,i) + real(0.25d0* &
-F(q10,q20,mu1,mu2) * &
-F(q30,q40,mu3,mu4) * &
-vsa*W*CONJG(vsb))
-
                         end if
                     end do
                     end do
@@ -2088,7 +2043,7 @@ subroutine get_q_nref4(mappings, nref4, norbitq4, iq, nsym)
         integer, allocatable, dimension(:) :: norbit4
         integer, dimension(12*nsym, 4) :: equilist
 
-        integer, dimension(12,4) :: permutations
+        integer, dimension(8,4) :: permutations
         integer, dimension(4) :: qplet, qplet_perm, qplet_sym
         integer :: q1, q2, q3, q4, nall4, equiv, iperm, isym, iq, nsym
         logical :: its_in_list
@@ -2098,9 +2053,8 @@ subroutine get_q_nref4(mappings, nref4, norbitq4, iq, nsym)
 
         permutations = reshape([ &
             1,2,3,4, 2,1,4,3, 3,4,1,2, 4,3,2,1, &
-            1,3,2,4, 3,1,4,2, 2,4,1,3, 4,2,3,1, &
-            4,2,3,1, 2,4,1,3, 3,1,4,2, 1,3,2,4], &
-        [12,4], order=[2,1])
+            1,3,2,4, 3,1,4,2, 2,4,1,3, 4,2,3,1], &
+        [8,4], order=[2,1])
 
         !permutations = reshape([1,2,3,4], [1,4])
 
@@ -2116,7 +2070,7 @@ subroutine get_q_nref4(mappings, nref4, norbitq4, iq, nsym)
                                         if (its_in_list) cycle do4
                                         nref4 = nref4 + 1
                                         equiv = 0
-                                        do iperm = 1, 12
+                                        do iperm = 1, 8
                                                 qplet_perm(1) = qplet(permutations(iperm,1))
                                                 qplet_perm(2) = qplet(permutations(iperm,2))
                                                 qplet_perm(3) = qplet(permutations(iperm,3))
@@ -2158,7 +2112,7 @@ orbit4t, orbit4o, norbit, ref4, iq, nsym)
         integer, dimension(iq**4,4) :: all4
         integer, dimension(norbitq4, 4) :: equilist
 
-        integer, dimension(12,4) :: permutations
+        integer, dimension(8,4) :: permutations
         integer, dimension(4) :: qplet, qplet_perm, qplet_sym
         integer :: q1, q2, q3, q4, nall4, equiv, iperm, isym
         integer :: iq, nsym
@@ -2171,9 +2125,8 @@ orbit4t, orbit4o, norbit, ref4, iq, nsym)
         
         permutations = reshape([ &
             1,2,3,4, 2,1,4,3, 3,4,1,2, 4,3,2,1, &
-            1,3,2,4, 3,1,4,2, 2,4,1,3, 4,2,3,1, &
-            4,2,3,1, 2,4,1,3, 3,1,4,2, 1,3,2,4], &
-        [12,4], order=[2,1])
+            1,3,2,4, 3,1,4,2, 2,4,1,3, 4,2,3,1], &
+        [8,4], order=[2,1])
 
         ref4 = 0
         nall4 = 0
@@ -2190,7 +2143,7 @@ orbit4t, orbit4o, norbit, ref4, iq, nsym)
                                         if (its_cons) then
                                             ref4 = ref4 + 1                                        
                                             equiv = 0
-                                            do iperm = 1, 12
+                                            do iperm = 1, 8
                                                     qplet_perm(1) = qplet(permutations(iperm,1))
                                                     qplet_perm(2) = qplet(permutations(iperm,2))
                                                     qplet_perm(3) = qplet(permutations(iperm,3))
@@ -2212,7 +2165,7 @@ orbit4t, orbit4o, norbit, ref4, iq, nsym)
                                             norbit(ref4) = equiv
                                         else                                
                                             equiv = 0
-                                            do iperm = 1, 12
+                                            do iperm = 1, 8
                                                     qplet_perm(1) = qplet(permutations(iperm,1))
                                                     qplet_perm(2) = qplet(permutations(iperm,2))
                                                     qplet_perm(3) = qplet(permutations(iperm,3))
