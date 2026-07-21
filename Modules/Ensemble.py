@@ -252,19 +252,6 @@ Error, the supercell does not match with the q grid of the dynamical matrix.
         # A flag that memorize if the ensemble has also the stresses
         self.has_stress = True
 
-        # Store data for calculations of 3FC elements:
-        self.a = np.zeros( (Nsc * 3), dtype = np.double)
-        self.new_pol = np.zeros( (Nsc, Nsc * 3, 3), dtype = np.double)
-        # If the element is sym:
-        self.ur = np.zeros( (self.N, Nsc * 3)) 
-        self.upsilon = np.zeros( (Nsc*3, Nsc * 3))
-        # Symmetry data for sym 3FC:
-        self.nsym = 0
-        self.s_cart = np.zeros( (3, 3, 48) , dtype = np.float64, order = "F")
-        self.s_inv_cart = np.zeros( (3, 3, 48) , dtype = np.float64, order = "F")
-        self.irt = np.zeros( (48, Nsc), dtype = np.intc, order = "F")
-        self.translations_irt = np.zeros( (Nsc, np.prod(self.supercell)), dtype = np.intc, order = "F") 
-
         # A flag for each configuration that check if it possess a force and a stress
         self.force_computed = None
         self.stress_computed = None
@@ -3911,6 +3898,17 @@ Error while loading the julia module.
         nat_sc = int(np.shape(pols)[0] / 3)
         nat = self.dyn_0.structure.N_atoms
 
+        a = np.zeros( (nat_sc * 3), dtype = np.double)
+        new_pol = np.zeros( (nat_sc, nat_sc * 3, 3), dtype = np.double)
+        # If the element is sym:
+        ur = np.zeros( (self.N, nat_sc * 3)) 
+        upsilon = np.zeros( (nat_sc*3, nat_sc * 3))
+        # Symmetry data for sym 3FC:
+        s_cart = np.zeros( (3, 3, 48) , dtype = np.float64, order = "F")
+        s_inv_cart = np.zeros( (3, 3, 48) , dtype = np.float64, order = "F")
+        irt = np.zeros( (48, nat_sc), dtype = np.intc, order = "F")
+        translations_irt = np.zeros( (nat_sc, np.prod(self.supercell)), dtype = np.intc, order = "F")
+        
         # Get the translational modes
         if not self.ignore_small_w:
             trans = CC.Methods.get_translations(pols, super_structure.get_masses_array())
@@ -3933,25 +3931,25 @@ Error while loading the julia module.
         u = self.u_disps.reshape((self.N, nat_sc, 3), order = "C") #/ Bohr
         
         log_err = "err_yesrho"
-        self.a = SCHAModules.thermodynamic.w_to_a(w, self.current_T)
+        a = SCHAModules.thermodynamic.w_to_a(w, self.current_T)
         # Get the polarization vectors in the correct format
         for i in range(nat_sc):
             for j in range(n_modes):
-                self.new_pol[i, j, :] = pols[3*i : 3*(i+1), j]
+                new_pol[i, j, :] = pols[3*i : 3*(i+1), j]
 
         #Calculating rotated displacements and upsilon matrix"
-        self.ur, self.upsilon = SCHAModules.get_ur_upsilon_matrices(self.a, self.new_pol, trans, amass, ityp, u)
+        ur, upsilon = SCHAModules.get_ur_upsilon_matrices(a, new_pol, trans, amass, ityp, u)
         #Obtaining symmetry data
         qe_sym = CC.symmetries.QE_Symmetry(super_structure)
         qe_sym.SetupFromSPGLIB() 
 
         # SpaceGroup symmetries data
-        self.nsym, self.s_cart, self.s_inv_cart, self.irt = qe_sym.QE_nsym, qe_sym.QE_s_cart, qe_sym.QE_s_inv_cart, qe_sym.QE_irt
-        self.s_cart = np.asfortranarray(self.s_cart)
-        self.s_inv_cart = np.asfortranarray(self.s_inv_cart)
+        s_cart, s_inv_cart, irt = qe_sym.QE_s_cart, qe_sym.QE_s_inv_cart, qe_sym.QE_irt
+        s_cart = np.asfortranarray(s_cart)
+        s_inv_cart = np.asfortranarray(s_inv_cart)
 
         #Translations
-        self.translations_irt = qe_sym.QE_translations_irt
+        translations_irt = qe_sym.QE_translations_irt
         #self.prepare_sym_third_fc = False
 
         wq = np.empty(nat*3, dtype=np.float64)
@@ -4048,7 +4046,7 @@ Error while loading the julia module.
         nat = self.current_dyn.structure.N_atoms
         n_modes = self.current_dyn.structure.N_atoms*mod[0]*mod[1]*mod[2]*3
 
-        ref_3fc = SCHAModules.module_hess.get_ref3fc(nat, orbit3a, indep_3fc_elem, n_indep_3fc_elem, kernel_3fc, rot_3fc, self.ur, self.upsilon, f, self.rho, log_err, self.s_inv_cart, self.irt, self.translations_irt, True)
+        ref_3fc = SCHAModules.module_hess.get_ref3fc(nat, orbit3a, indep_3fc_elem, n_indep_3fc_elem, kernel_3fc, rot_3fc, ur, upsilon, f, self.rho, log_err, s_inv_cart, irt, translations_irt, True)
 
         vs_red = np.empty([nrefq2,nat*3,nat*3,nat*3], dtype=np.complex128)
         vs_red = SCHAModules.module_hess.get_ref_vsq(refq2,trs_l,rot_3fc,ref_3fc,mapping_triplet,True)
@@ -4060,7 +4058,7 @@ Error while loading the julia module.
 
             orbit4t, orbit4o, norbit_4, indep_4fc_elem, n_indep_4fc_elem, kernel_4fc, rot_4fc, mapping_quadruplet = Classify.recognize_quadruplet(self.current_dyn, mapping, map_uc, verbose)
 
-            ref_4fc = SCHAModules.module_hess.get_ref4fc(orbit4t, indep_4fc_elem, n_indep_4fc_elem, kernel_4fc, rot_4fc, self.ur, self.upsilon, f, self.rho, log_err, self.s_inv_cart, self.irt, self.translations_irt, True)
+            ref_4fc = SCHAModules.module_hess.get_ref4fc(orbit4t, indep_4fc_elem, n_indep_4fc_elem, kernel_4fc, rot_4fc, ur, upsilon, f, self.rho, log_err, s_inv_cart, irt, translations_irt, True)
             
             ws_red = np.zeros([nrefq4,nat*3,nat*3,nat*3,nat*3], dtype=np.complex128)
             ws_red = SCHAModules.module_hess.get_ref_wsq(refq4,trs_l,rot_4fc,ref_4fc,mapping_quadruplet,True)
@@ -4068,7 +4066,7 @@ Error while loading the julia module.
             degs = qClassify.find_degeneracies(trs_wq)
             Pmn = qClassify.construct_Pmn(mapping, orbitq1a, orbitq1s, trs_polvecs, rot_cart)
             
-            v_red, ref_3fc = SCHAModules.module_hess.get_v3_red(nat, norbit3, orbit3a, orbit3s, indep_3fc_elem, n_indep_3fc_elem, kernel_3fc, rot_3fc, self.ur, self.upsilon, f, self.rho, log_err, self.s_inv_cart, self.irt, self.translations_irt)
+            v_red, ref_3fc = SCHAModules.module_hess.get_v3_red(nat, norbit3, orbit3a, orbit3s, indep_3fc_elem, n_indep_3fc_elem, kernel_3fc, rot_3fc, ur, upsilon, f, self.rho, log_err, s_inv_cart, irt, translations_irt)
             vs = SCHAModules.module_hess.get_all_vsq(trs_l, v_red, map_uc)
 
             if do_scf:
@@ -4089,7 +4087,7 @@ Error while loading the julia module.
                         for r in range(nr):
                             # Translated Single atomic-cartesian index
                             # Fortran to Py: -1
-                            phi_sc_odd[3*(self.translations_irt[nat1,r]-1)+alpha, 3*(self.translations_irt[nat2,r]-1)+beta] = fc9[index]
+                            phi_sc_odd[3*(translations_irt[nat1,r]-1)+alpha, 3*(translations_irt[nat2,r]-1)+beta] = fc9[index]
         dynq_odd = CC.Phonons.GetDynQFromFCSupercell(phi_sc_odd, np.array(self.current_dyn.q_tot), 
                                             self.current_dyn.structure, super_structure)
         self.convert_units(UNITS_DEFAULT)
