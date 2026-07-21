@@ -224,6 +224,7 @@ py.install_sources([
   'Modules/cli.py',
   'Modules/Classify.py',
   'Modules/qClassify.py',
+  'Modules/Beyond_SSCHA.py',
   ],
   subdir: 'sscha',
 )

@@ -4002,7 +4002,7 @@ Error while loading the julia module.
                     l[qi,mode] = np.zeros(nat_sc*3, dtype=np.complex128)
                     pol_vecs[qi,mode] = np.zeros(nat_sc*3, dtype=np.complex128)
         
-        # Imposing eps(q)=[eps(-q)]* time-reversal criteria")
+        # Imposing eps(q)=[eps(-q)]* time-reversal criteria"
 
         ############################## Start impose TRS ##############################
         mappingq, orbitq1a, orbitq1s, its_zb = qClassify.map_singlet(q_list_cart, q_list, rcell*__A_TO_BOHR__, rot_cart)
