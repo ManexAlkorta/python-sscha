@@ -251,8 +251,8 @@ class model():
         f2.fill_between(Q3[:,3], 0, phi3**2, color="red", alpha=0.5)
         f4.fill_between(Q4[:,4], 0, phi4**2, color="red", alpha=0.5)
         f6.fill_between(Q5[:,5], 0, phi5**2, color="red", alpha=0.5)
-        f2.plot(Q3[:,3], phi3_0**2, color="black", linestyle="dashed")
-        f4.plot(Q4[:,4], phi4_0**2, color="black", linestyle="dashed")
+        f2.plot(Q3[:,3], phi3_0**2*(phi3.max()**2/phi3_0.max()**2), color="black", linestyle="dashed")
+        f4.plot(Q4[:,4], phi4_0**2*(phi4.max()**2/phi4_0.max()**2), color="black", linestyle="dashed")
         f6.plot(Q5[:,5], phi5_0**2, color="black", linestyle="dashed")
         f6.plot(x, phi_g**2/phi_g[500]**2*phi5[100]**2, color="red", linestyle="dashed")
 
@@ -705,16 +705,30 @@ def V_nm(ns,ms,omegas,Qns,Vs,weights):
 
 def construct_basis(nmax, n_modes):
 
+    n_modes_opt = n_modes - 3
+
+    # Maximum quantum number for each non-acoustic mode
+    nmax_opt = nmax[3:]
+
     basis = []
 
-    n_modes_opt = n_modes-3
-    for k in range(nmax+1):
-        for comb in itertools.combinations_with_replacement(range(n_modes_opt), k):
+    # Total number of vibrational quanta
+    for k in range(np.sum(nmax_opt) + 1):
+
+        # All ways of distributing k quanta among the modes
+        for comb in itertools.combinations_with_replacement(
+            range(n_modes_opt), k
+        ):
+
             ns = np.zeros(n_modes_opt, dtype=np.int64)
+
             for mode in comb:
                 ns[mode] += 1
-            basis.append(ns)
-    
+
+            # Keep only states satisfying the mode-specific nmax
+            if np.all(ns <= nmax_opt):
+                basis.append(ns)
+
     return np.array(basis)
 
 def construct_nmm_basis(nmax, n_modes):
@@ -875,7 +889,7 @@ def get_new_correction(model, ensemble, T, n_max, N, step_size, alpha_mix=0.01, 
 
     w, pols = ensemble.current_dyn.DiagonalizeSupercell()
 
-    basis = construct_nmm_basis(n_max, n_modes)
+    basis = construct_basis(n_max, n_modes)
     eigenvectors0 = np.diag(np.ones(basis.shape[0])) # Hasteko. Gero hau hobetu beharko da.
     eigenvalues0 = get_eigenvalues(basis, w[3:]) # Hasteko. Gero hau hobetu beharko da.
 
@@ -1094,18 +1108,19 @@ def build_general_quadrature_grid(basis, omegas):
     omegas = np.asarray(omegas)
     
     n_modes = basis.shape[1]      
-    n_max = np.max(basis)          
+    n_max = np.max(basis, axis=0)          
     
-    # Required points per mode (safe up to quartic potentials, d_V = 4)
-    n_points = int(np.ceil(n_max + (4 + 1) / 2))
-    
-    # Get standard mathematical roots (x) and weights (w) for e^(-x^2)
-    x_std, w_std = np.polynomial.hermite.hermgauss(n_points)
     
     grids_list = []
     weights_list = []
     
     for mu in range(n_modes):
+        # Required points per mode (safe up to quartic potentials, d_V = 4)
+        n_points = int(np.ceil(n_max[mu] + (4 + 1) / 2))
+        
+        # Get standard mathematical roots (x) and weights (w) for e^(-x^2)
+        x_std, w_std = np.polynomial.hermite.hermgauss(n_points)
+
         omega = omegas[mu]
         
         # 1. Physical mass-weighted normal coordinate mapping (Rydberg)
