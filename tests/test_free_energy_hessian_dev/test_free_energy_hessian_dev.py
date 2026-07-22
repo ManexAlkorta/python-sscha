@@ -25,9 +25,11 @@ def test_free_energy_hessian_dev():
     np.testing.assert_allclose(
         dyn_hessian_dev.dynmats, 
         dyn_hessian.dynmats, 
-        atol=1e-4,
+        atol=5e-5,
         err_msg="Hessian matrix from dev implementation does not match reference!"
     )
+
+    dyn_hessian.save_qe("hessianv4_new_")
 
 if __name__ == "__main__":
     test_free_energy_hessian_dev()
