@@ -23,7 +23,7 @@ cm2Thz = 0.0299792458
 
 class model():
 
-    def __init__(self, a, b, c, d, omega=9.1127e-4/2):
+    def __init__(self, a, b, c, d, a0):
         self.Natoms = 2
         self.Nspecies = 1
 
@@ -62,10 +62,10 @@ class model():
         self.c = c
         self.d = d
 
-        self.omega = omega
+        self.a0 = a0
 
-        self.frequencies = [0,0,0,self.omega,self.omega,np.sqrt(octic_second_deriv(0,self.a,self.b,self.c,self.d)+0j)]
-        self.eigenvalues = [0,0,0,self.omega**2,self.omega**2,octic_second_deriv(0,self.a,self.b,self.c,self.d)]
+        self.frequencies = [0,0,0,np.sqrt(octic_second_deriv(0,self.a0,0,0,0)+0j), np.sqrt(octic_second_deriv(0,self.a0,0,0,0)+0j), np.sqrt(octic_second_deriv(0,self.a,self.b,self.c,self.d)+0j)]
+        self.eigenvalues = [0,0,0,octic_second_deriv(0,self.a0,0,0,0),octic_second_deriv(0,self.a0,0,0,0),octic_second_deriv(0,self.a,self.b,self.c,self.d)]
 
         # # Test units with full harmonic.
         # self.frequencies = [0,0,0,self.omega,self.omega,self.omega]
@@ -80,13 +80,13 @@ class model():
 
     def get_energies(self, disps):
         Qns = disps @ self.pols.T * np.sqrt(self.masses[0])
-        energies = octic_potential(Qns[:,5],self.a,self.b,self.c,self.d) + harmonic_potential(Qns[:,3],self.omega) + harmonic_potential(Qns[:,4],self.omega)
+        energies = octic_potential(Qns[:,5],self.a,self.b,self.c,self.d) + octic_potential(Qns[:,3],self.a0,0,0,0) + octic_potential(Qns[:,4],self.a0,0,0,0)
         # energies = harmonic_potential(Qns[:,5],self.omega) + harmonic_potential(Qns[:,3],self.omega) + harmonic_potential(Qns[:,4],self.omega)
         return energies
     
     def get_forces(self, disps):
         Qns = disps @ self.pols.T * np.sqrt(self.masses[0])
-        forces = (-1)*(np.outer(octic_first_deriv(Qns[:,5],self.a,self.b,self.c,self.d),self.pols[:,5]) + np.outer(harmonic_first_deriv(Qns[:,3],self.omega),self.pols[3]) + np.outer(harmonic_first_deriv(Qns[:,4],self.omega),self.pols[4]))
+        forces = (-1)*(np.outer(octic_first_deriv(Qns[:,5],self.a,self.b,self.c,self.d),self.pols[:,5]) + np.outer(octic_first_deriv(Qns[:,3],self.a0,0,0,0),self.pols[3]) + np.outer(octic_first_deriv(Qns[:,4],self.a0,0,0,0),self.pols[4]))
         # forces = (-1)*(np.outer(harmonic_first_deriv(Qns[:,5],self.omega),self.pols[5]) + np.outer(harmonic_first_deriv(Qns[:,3],self.omega),self.pols[3]) + np.outer(harmonic_first_deriv(Qns[:,4],self.omega),self.pols[4]))
         return forces*np.sqrt(self.masses[0]) # Because we are working with the normal mode basis!!
     
@@ -193,33 +193,24 @@ class model():
                 ))
         file.write(" **************************************************************************\n")
 
-    def plot_quartic_phi(self, eigenvalues, eigenvectors, basis, omegas, pols, weighted_samples, weights):
-        disps3 = np.outer(np.linspace(-2,2,200),pols[:,3])
-        disps4 = np.outer(np.linspace(-2,2,200),pols[:,4])
-        disps5 = np.outer(np.linspace(-2,2,200),pols[:,5])
+    def plot_quartic_phi(self, eigenvalues, eigenvectors, basis, omegas, pols, weighted_samples, weights, T):
+        disps3 = np.outer(np.linspace(-5,5,400),pols[:,3])
+        disps4 = np.outer(np.linspace(-5,5,400),pols[:,4])
+        disps5 = np.outer(np.linspace(-5,5,400),pols[:,5])
 
         Q3 = disps3 @ pols * np.sqrt(self.masses[0])
         Q4 = disps4 @ pols * np.sqrt(self.masses[0])
         Q5 = disps5 @ pols * np.sqrt(self.masses[0])
 
-        phi3 = np.zeros(Q3.shape[0])
-        phi4 = np.zeros(Q4.shape[0])
-        phi5 = np.zeros(Q5.shape[0])
+        rho3 = get_rho(basis,Q3[:,3:],omegas[3:],eigenvalues,eigenvectors,T=T)
+        rho4 = get_rho(basis,Q4[:,3:],omegas[3:],eigenvalues,eigenvectors,T=T)
+        rho5 = get_rho(basis,Q5[:,3:],omegas[3:],eigenvalues,eigenvectors,T=T)
 
-        for n in range(basis.shape[0]):
-            phi3 += eigenvectors[n,0] * get_basis_function(basis[n],Q3[:,3:],omegas[3:])
-            phi4 += eigenvectors[n,0] * get_basis_function(basis[n],Q4[:,3:],omegas[3:])
-            phi5 += eigenvectors[n,0] * get_basis_function(basis[n],Q5[:,3:],omegas[3:])
+        q0, rho3_0, E0 = get_reference_rho(self.a,self.b,self.c,self.d,T,x_max=500,N=1000)
+        q0, rho4_0, E0 = get_reference_rho(self.a0,0,0,0,T,x_max=500,N=1000)
+        q0, rho5_0, E0 = get_reference_rho(self.a0,0,0,0,T,x_max=500,N=1000)
 
-        phi3_0 = get_basis_function([0,0,0],Q3[:,3:],omegas[3:])
-        phi4_0 = get_basis_function([0,0,0],Q4[:,3:],omegas[3:])
-        phi5_0 = get_basis_function([0,0,0],Q5[:,3:],omegas[3:])
-
-        x, energy_g, phi_g = self.get_reference_ground_state()
-        
-        print(f"E(n_max)={eigenvalues[0]}")
-        print(f"E(inf)={energy_g}")
-
+        print(E0, eigenvalues[0])
         f = plt.figure()
         f1 = f.add_subplot(2,3,1)
         f3 = f.add_subplot(2,3,2)
@@ -247,19 +238,17 @@ class model():
         f1b.plot(Q3[:,3], energies3)
         f3b.plot(Q4[:,4], energies4)
         f5b.plot(Q5[:,5], energies5)
-        
-        f2.fill_between(Q3[:,3], 0, phi3**2, color="red", alpha=0.5)
-        f4.fill_between(Q4[:,4], 0, phi4**2, color="red", alpha=0.5)
-        f6.fill_between(Q5[:,5], 0, phi5**2, color="red", alpha=0.5)
-        f2.plot(Q3[:,3], phi3_0**2*(phi3.max()**2/phi3_0.max()**2), color="black", linestyle="dashed")
-        f4.plot(Q4[:,4], phi4_0**2*(phi4.max()**2/phi4_0.max()**2), color="black", linestyle="dashed")
-        f6.plot(Q5[:,5], phi5_0**2, color="black", linestyle="dashed")
-        f6.plot(x, phi_g**2/phi_g[500]**2*phi5[100]**2, color="red", linestyle="dashed")
 
-        breakpoint()
+        f2.fill_between(Q3[:,3], 0, rho3, color="red", alpha=0.5)
+        f4.fill_between(Q4[:,4], 0, rho4, color="red", alpha=0.5)
+        f6.fill_between(Q5[:,5], 0, rho5, color="red", alpha=0.5)
+        f2.plot(q0, rho3_0*(rho3.max()/rho3_0.max()), color="black", linestyle="dashed")
+        f4.plot(q0, rho4_0*(rho4.max()/rho4_0.max()), color="black", linestyle="dashed")
+        f6.plot(q0, rho5_0*(rho5.max()/rho5_0.max()), color="black", linestyle="dashed")
+
         f2b.hist(weighted_samples[:,0],50,weights=weights)
-        f4b.hist(weighted_samples[:,1],50,weights=weights)
-        f6b.hist(weighted_samples[:,2],50,weights=weights)
+        #f4b.hist(weighted_samples[:,1],50,weights=weights)
+        #f6b.hist(weighted_samples[:,0],50,weights=weights)
 
         #f2.set_ylim(0,(phi0**2).max()*1.2)
         #f1.set_ylim(-10,20)
@@ -289,52 +278,6 @@ class model():
         f2.set_ylim(0,(phi0**2).max()*1.2)
         plt.show()
 
-    def get_reference_ground_state(self, x_max=200, N=1000):
-        """
-        Solves the 1D Schrödinger equation in the normal mode basis.
-        Mass does not appear in the equation, but hbar is explicitly maintained.
-        
-        Inputs:
-            a, b, c, d: Coefficients for the octic potential
-            hbar: The explicit value of Planck's constant / 2pi being used in your method
-            x_max: Grid boundary
-            N: Number of grid points
-        Returns:
-            x: 1D coordinate grid
-            ground_energy: Exact ground state energy
-            psi_ground: Normalized continuous wavefunction array
-        """
-        # 1. Setup the spatial grid in normal coordinates
-        x = np.linspace(-x_max, x_max, N)
-        dx = x[1] - x[0]
-        
-        # 2. Construct Kinetic Energy Matrix (T)
-        # Mass is gone, but hbar^2 remains explicitly in the numerator
-        main_diag = np.ones(N) * (-2.0)
-        off_diag = np.ones(N - 1) * 1.0
-        D2 = (np.diag(main_diag) + np.diag(off_diag, k=1) + np.diag(off_diag, k=-1)) / (dx**2)
-        
-        T = -0.5 * (hbar**2) * D2
-        
-        # 3. Construct Potential Energy Matrix (V)
-        V = np.diag(octic_potential(x, self.a, self.b, self.c, self.d))
-        
-        # 4. Total Hamiltonian
-        H = T + V
-        
-        # 5. Solve the Eigenproblem
-        energies, eigenvectors = eigh(H)
-        
-        # 6. Extract and properly normalize the ground state
-        ground_energy = energies[0]
-        psi_ground = eigenvectors[:, 0] / np.sqrt(dx)
-        
-        # Enforce a consistent positive phase at the origin
-        if psi_ground[N // 2] < 0:
-            psi_ground = -psi_ground
-            
-        return x, ground_energy, psi_ground
-
 
 def independent_harm_osc(n, q, omega):
     qi = np.sqrt(omega/hbar)*q
@@ -349,318 +292,269 @@ def get_basis_function(ns,qs,omegas):
         phi *= independent_harm_osc(n, qs[:,ni], omegas[ni])
     return phi
 
+def get_rho(basis, qs, omegas, eigenvalues, eigenvectors, T):
+    """
+    Computes the exact finite-temperature spatial probability density distribution rho(q, T)
+    for a multi-mode coupled harmonic system.
+    
+    Parameters:
+    -----------
+    basis : np.ndarray, shape (n_basis, n_modes)
+        Uncoupled harmonic basis quantum numbers (e.g., [[0,0,0], [1,0,0], ...]).
+    qs : np.ndarray, shape (N_grid_points, n_modes)
+        Spatial coordinate grid points where each column corresponds to mode q_i.
+    omegas : np.ndarray, shape (n_modes,)
+        Fundamental mode frequencies.
+    eigenvalues : np.ndarray, shape (n_basis,)
+        System energy eigenvalues E_k.
+    eigenvectors : np.ndarray, shape (n_basis, n_basis)
+        Unitary transformation matrix C_{n, k} mapping basis state n to eigenstate k.
+        (Assumed: eigenvectors[:, k] is the k-th eigenstate vector).
+    T : float
+        Temperature.
+    kb : float, optional
+        Boltzmann constant (defaults to 1.0).
+        
+    Returns:
+    --------
+    rho : np.ndarray, shape (N_grid_points,)
+        Thermal probability density distribution sum_k P_k |Psi_k(q)|^2.
+    """
+    n_basis = basis.shape[0]
+    n_grid = qs.shape[0]
+    
+    # 1. Strictly sort eigenvalues and eigenvectors so k=0 is guaranteed to be E_0
+    sort_idx = np.argsort(eigenvalues)
+    evals_sorted = eigenvalues[sort_idx]
+    
+    # Ensure eigenvectors are indexed as columns evecs[:, k] for state k
+    evecs_sorted = eigenvectors[:, sort_idx]
+    
+    # 2. Compute Boltzmann populations P_k
+    if T == 0 or T is None:
+        weights = np.zeros(n_basis, dtype=np.float64)
+        weights[0] = 1.0  # k=0 is the TRUE system ground state Psi_0(q)
+    else:
+        beta = 1.0 / (kb * T)
+        E_shift = evals_sorted - evals_sorted[0]
+        weights = np.exp(-beta * E_shift)
+        weights /= np.sum(weights)
+        
+    # 3. Evaluate all uncoupled product basis functions phi_n(q) on the grid
+    # phi_basis shape: (n_basis, N_grid_points)
+    phi_basis = np.empty((n_basis, n_grid), dtype=np.float64)
+    for n_idx, ns in enumerate(basis):
+        phi_basis[n_idx, :] = get_basis_function(ns, qs, omegas)
+        
+    # 4. Compute thermal density rho(q, T) = sum_k P_k * |sum_n C_{n,k} * phi_n(q)|^2
+    rho = np.zeros(n_grid, dtype=np.float64)
+    
+    for k in range(n_basis):
+        if weights[k] < 1e-15:
+            continue
+            
+        # Extract the expansion coefficients C_{n, k} for physical eigenstate k
+        C_k = evecs_sorted[:, k]
+        
+        # Physical eigenstate wavefunction Psi_k(q) = sum_n C_{n,k} * phi_n(q)
+        Psi_k = C_k @ phi_basis  # Shape: (N_grid_points,)
+        
+        # Add contribution P_k * |Psi_k(q)|^2
+        rho += weights[k] * (Psi_k**2)
+            
+    return rho
+
 def get_Qnm(basis, eigenvectors, omegas):
+    """
+    Computes position matrix elements Q_nm in the eigenbasis.
+    In Rydberg units (m_e = 1/2), Q = sqrt(hbar / omega) * (a + a^\dagger).
+    """
     n_modes = basis.shape[1]
     n_basis = basis.shape[0]
-    Qnm_harm = np.empty([n_modes,n_basis,n_basis], dtype=np.float64)
-    Qnm = np.empty([n_modes,n_basis,n_basis], dtype=np.float64)
+    Qnm_harm = np.zeros([n_modes, n_basis, n_basis], dtype=np.float64)
+    Qnm = np.zeros([n_modes, n_basis, n_basis], dtype=np.float64)
+    
     for mu in range(n_modes):
+        omega_mu = omegas[mu]
         for ni, ns in enumerate(basis):
             for mi, ms in enumerate(basis):
-                its_active = True
-                for nu in range(n_modes):
-                    if its_active:
-                        if nu != mu:
-                            if ns[nu]!=ms[nu]:
-                                Qnm_harm[mu,ni,mi] = 0
-                                its_active = False
-                        else:
-                            if ns[mu] == ms[mu]+1: 
-                                Qnm_harm[mu,ni,mi] = np.sqrt(hbar*(ms[mu]+1)/(omegas[mu]))
-                            if ns[mu] == ms[mu]-1: 
-                                Qnm_harm[mu,ni,mi] = np.sqrt(hbar*ms[mu]/(omegas[mu]))
-                            else:
-                                Qnm_harm[mu,ni,mi] = 0
-                                its_active = False
+                # Check if all other modes remain unchanged
+                diffs = ns - ms
+                active_mode_diff = diffs[mu]
+                other_modes_same = np.all(diffs[:mu] == 0) and np.all(diffs[mu+1:] == 0)
+                
+                if other_modes_same:
+                    # <n| Q | n-1> = sqrt(hbar * n / omega)
+                    if active_mode_diff == 1:
+                        Qnm_harm[mu, ni, mi] = np.sqrt(hbar * ns[mu] / omega_mu)
+                    # <n| Q | n+1> = sqrt(hbar * (n + 1) / omega)
+                    elif active_mode_diff == -1:
+                        Qnm_harm[mu, ni, mi] = np.sqrt(hbar * (ns[mu] + 1) / omega_mu)
 
+        # Transform to exact eigenbasis via eigenvectors
         Qnm[mu] = eigenvectors.T @ Qnm_harm[mu] @ eigenvectors
+        
     return Qnm
 
+
 def get_correlation_QQ(t, mu, nu, T, eigenvalues, Qnm):
-    """Computes C(t) quickly by reusing precalculated Qnm matrix."""
-    # Handle T=0 safely to avoid division by zero or large exponentials
-    if T == 0:
-        # At T=0, only the ground state (n=0) is populated
-        # Z = 1, and exp(-E_0 / kT) is the only active starting state
-        qqt = 0.0 + 0j
-        n = 0 
-        for m in range(len(eigenvalues)):
-            omega_mn = (eigenvalues[m] - eigenvalues[n]) / hbar
-            qqt += np.exp(1j * omega_mn * t) * Qnm[mu, n, m] * Qnm[nu, m, n]
-        return qqt
-    
-    # At T > 0, use full Boltzmann weights
-    weights = np.exp(-eigenvalues / (kb * T))
-    Z = np.sum(weights)
-    
+    """
+    Computes time correlation function C_mu_nu(t) = <Q_mu(t) Q_nu(0)>.
+    Uses numerically stable Boltzmann weights relative to ground state.
+    """
     n_basis = len(eigenvalues)
+    
+    # Calculate populations relative to E_0 to prevent exponent overflow
+    if T == 0 or T is None:
+        weights = np.zeros(n_basis, dtype=np.float64)
+        weights[0] = 1.0
+    else:
+        beta = 1.0 / (kb * T)
+        E_shift = eigenvalues - eigenvalues[0]
+        weights = np.exp(-beta * E_shift)
+        weights /= np.sum(weights)
+
     qqt = 0.0 + 0j
     for n in range(n_basis):
+        if weights[n] < 1e-15:
+            continue
         for m in range(n_basis):
             omega_mn = (eigenvalues[m] - eigenvalues[n]) / hbar
-            qqt += (weights[n] / Z) * np.exp(1j * omega_mn * t) * Qnm[mu, n, m] * Qnm[nu, m, n]
+            # C(t) = sum_nm P_n * <n|Q_mu|m> <m|Q_nu|n> * e^(i * w_mn * t)
+            qqt += weights[n] * Qnm[mu, n, m] * Qnm[nu, m, n] * np.exp(1j * omega_mn * t)
             
     return qqt
 
-def get_spectrum_J(mu, nu, T, eigenvalues, eigenvectors, basis, omegas, precision_factor=4.0):
+
+def get_spectrum_J(mu, nu, T, eigenvalues, eigenvectors, basis, omegas, 
+                   w_min=0.0, w_max=0.004, n_points=2000, eta=1e-5):
     """
-    Physically extends t_max to narrow the peaks and increase the true frequency 
-    resolution. 
-    
-    Set precision_factor=4.0 or 8.0 for extremely high precision.
+    Computes the spectral density J(w) analytically in the frequency domain.
+    Eliminates all FFT artifacts, time-grid truncation ripples, and negative values.
     """
     n_basis = len(eigenvalues)
     
-    # 1. PRECALCULATE Qnm ONCE
+    # 1. Calculate Qnm in eigenbasis once
     Qnm = get_Qnm(basis, eigenvectors, omegas)
     
-    # 2. CALCULATE ENERGY GAPS
-    gaps = []
-    for i in range(n_basis):
-        for j in range(i + 1, n_basis):
-            gaps.append(abs(eigenvalues[j] - eigenvalues[i]))
-    gaps = np.array(gaps)
-    
-    max_gap = np.max(gaps) / hbar
-    min_gap = np.min(gaps[gaps > 1e-6]) / hbar 
-    
-    # 3. DEFINE HIGH-PRECISION GRID LIMITS
-    # dt stays sharp to catch the fastest oscillations
-    dt = np.pi / (2 * max_gap) 
-    
-    # t_max is physically expanded to squeeze peaks narrower and density higher
-    t_max = ((2 * np.pi / min_gap) * 2.0) * precision_factor        
-    
-    t_array = np.arange(0, t_max, dt)
-    
-    # Damping naturally scales down so your signal physically lives longer!
-    eta = 3.0 / t_max 
-    
-    print(f"Calculating high-precision spectrum...")
-    print(f"Physical t_max extended to: {t_max:.2f}")
-    print(f"Total time steps to compute: {len(t_array)}")
-    
-    # 4. COMPUTE CORRELATION FUNCTION USING THE FAST PATHWAY
-    C_t = np.array([
-        get_correlation_QQ(t, mu, nu, T, eigenvalues, Qnm) 
-        for t in t_array
-    ])
-    
-    # 5. FOURIER TRANSFORM PIPELINE
-    damping = np.exp(-(eta * t_array)**2)
-    C_t_damped = C_t * damping
-    
-    J_raw = np.fft.fft(C_t_damped) * dt
-    frequencies = np.fft.fftfreq(len(t_array), d=dt) * 2 * np.pi
-    
-    freq_shifted = np.fft.fftshift(frequencies)
-    J_shifted = np.fft.fftshift(J_raw)
-    
-    # 6. FOCUS PLOT STRICTLY ON YOUR WINDOW (0 to 0.004)
-    zoom_mask = (freq_shifted >= 0.0) & (freq_shifted <= 0.004)
-    
-    w_plot = freq_shifted[zoom_mask]
-    J_plot = np.real(J_shifted[zoom_mask])
-    
+    # 2. Calculate Boltzmann populations
+    if T == 0 or T is None:
+        weights = np.zeros(n_basis, dtype=np.float64)
+        weights[0] = 1.0
+    else:
+        beta = 1.0 / (kb * T)
+        E_shift = eigenvalues - eigenvalues[0]
+        weights = np.exp(-beta * E_shift)
+        weights /= np.sum(weights)
+
+    # 3. Frequency axis setup
+    w_plot = np.linspace(w_min, w_max, n_points)
+    J_plot = np.zeros_like(w_plot, dtype=np.float64)
+
+    # 4. Direct analytical summation over lorentzian-broadened transitions
+    for n in range(n_basis):
+        if weights[n] < 1e-15:
+            continue
+        for m in range(n_basis):
+            w_mn = (eigenvalues[m] - eigenvalues[n]) / hbar
+            
+            # Transition dipole strength
+            strength = weights[n] * Qnm[mu, n, m] * Qnm[nu, m, n]
+            
+            # Analytical delta-function representation (Lorentzian line profile)
+            lorentzian = (1.0 / np.pi) * (eta / ((w_plot - w_mn)**2 + eta**2))
+            
+            J_plot += np.real(strength) * lorentzian
+
+    # Guarantee non-negative physical output
+    J_plot = np.maximum(J_plot, 0.0)
+
     return w_plot, J_plot
 
-            
-def sample_wavefunction_unique(
-    basis, 
-    eigenvectors1, eigenvalues1, 
-    eigenvectors0, eigenvalues0, 
-    alpha_mix, 
-    temperature, 
-    omegas, 
-    N_unique_targets, 
-    step_size=0.5, # Your input step size (static for production)
-    target_rate=0.44, 
-):
-
-    # 1. Temperature & Boltzmann Setup
-    if temperature <= 1e-6:
-        w1 = np.zeros_like(eigenvalues1)
-        w1[np.argmin(eigenvalues1)] = 1.0
-        w0 = np.zeros_like(eigenvalues0)
-        w0[np.argmin(eigenvalues0)] = 1.0
-    else:
-        beta = 1.0 / (kb * temperature)
-        E1_shifted = eigenvalues1 - np.min(eigenvalues1)
-        w1 = np.exp(-beta * E1_shifted) / np.sum(np.exp(-beta * E1_shifted))
-        E0_shifted = eigenvalues0 - np.min(eigenvalues0)
-        w0 = np.exp(-beta * E0_shifted) / np.sum(np.exp(-beta * E0_shifted))
-
-    # 2. Probability Evaluator
-    def get_explicit_thermal_probability(q_coord):
-        phi_vals = np.array([get_basis_function(ns, q_coord, omegas)[0] for ns in basis])
-        psi1 = np.dot(phi_vals, eigenvectors1)
-        psi0 = np.dot(phi_vals, eigenvectors0)
-        rho1 = np.sum(w1 * np.real(psi1 * np.conj(psi1)))
-        rho0 = np.sum(w0 * np.real(psi0 * np.conj(psi0)))
-        return alpha_mix * rho1 + (1.0 - alpha_mix) * rho0
-
-    # Parse inputs
-    if isinstance(step_size, (int, float)):
-        input_step_sizes = np.array([step_size, step_size, step_size], dtype=np.float64)
-    else:
-        input_step_sizes = np.array(step_size, dtype=np.float64)
-
-    # --- PHASE 1: ACTIVE TUNING (To find the real optimal step size) ---
-    burn_in_steps = 1000
-    print(f"Running {burn_in_steps} steps of adaptive burn-in to find optimal step sizes...")
-    
-    q_current = np.zeros((1, 3), dtype=np.float64)
-    p_current = get_explicit_thermal_probability(q_current)
-    
-    # During burn-in, we actively scale this copy so it can converge properly
-    active_sigmas = np.copy(input_step_sizes)
-    log_sigmas = np.log(active_sigmas)
-    
-    for t in range(1, burn_in_steps + 1):
-        learning_rate = 1.0 / (t ** 0.6)
-        
-        for d in range(3):
-            q_proposal = np.copy(q_current)
-            # Use the shifting active_sigmas here so the feedback loop works!
-            q_proposal[0, d] += np.random.normal(0, active_sigmas[d])
-            p_proposal = get_explicit_thermal_probability(q_proposal)
-            
-            if np.asarray(p_current).item() == 0.0:
-                ratio = 1.0
-            else:
-                ratio = np.asarray(p_proposal / p_current).item()
-                
-            accept_prob = min(1.0, ratio)
-            accepted = False
-            if np.random.uniform(0, 1) < accept_prob:
-                q_current = np.real(q_proposal) 
-                p_current = p_proposal
-                accepted = True
-            
-            # Adjust the active step size based on success
-            log_sigmas[d] += learning_rate * (int(accepted) - target_rate)
-            active_sigmas[d] = np.clip(np.exp(log_sigmas[d]), 1e-5, 100.0)
-
-    # --- PHASE 2: PRINT THE COMPARISON ---
-    print("\n" + "="*55)
-    print("           MCMC STEP SIZE DIAGNOSTICS")
-    print("="*55)
-    print(f"Target Acceptance Rate: {target_rate:.1%}")
-    print(f"Dimension | Input Step Size | Suggested Step Size (for 44%)")
-    print(f"   X     |    {input_step_sizes[0]:.6f}     |     {active_sigmas[0]:.6f}")
-    print(f"   Y     |    {input_step_sizes[1]:.6f}     |     {active_sigmas[1]:.6f}")
-    print(f"   Z     |    {input_step_sizes[2]:.6f}     |     {active_sigmas[2]:.6f}")
-    print("="*55 + "\n")
-    
-    # --- PHASE 3: PRODUCTION RUN (Forced to use your raw Input Step Sizes) ---
-    print(f"Running production with STATIC step sizes {input_step_sizes}...")
-    
-    unique_list = []
-    weights_list = []
-    probs_list = []  
-    
-    current_unique_q = np.copy(q_current[0])
-    current_prob = p_current
-    current_weight = 1
-    
-    total_accepted = 0
-    total_steps = 0
-    
-    while len(unique_list) < N_unique_targets:
-        for d in range(3):
-            total_steps += 1
-            q_proposal = np.copy(q_current)
-            
-            # CRITICAL: We use input_step_sizes here, completely ignoring the suggestions!
-            q_proposal[0, d] += np.random.normal(0, input_step_sizes[d])
-            p_proposal = get_explicit_thermal_probability(q_proposal)
-            
-            if np.asarray(p_current).item() == 0.0:
-                ratio = 1.0
-            else:
-                ratio = np.asarray(p_proposal / p_current).item()
-                
-            if np.random.uniform(0, 1) < ratio:
-                unique_list.append(current_unique_q)
-                weights_list.append(current_weight)
-                probs_list.append(current_prob)
-                
-                q_current = np.real(q_proposal)
-                p_current = p_proposal
-                current_unique_q = np.copy(q_current[0])
-                current_prob = p_current
-                current_weight = 1
-                
-                total_accepted += 1
-            else:
-                current_weight += 1
-                
-            if len(unique_list) >= N_unique_targets:
-                break
-
-    unique_qs = np.array(unique_list, dtype=np.float64)
-    weights = np.array(weights_list)
-    prob_densities = np.array(probs_list)
-    
-    avg_acceptance = total_accepted / total_steps
-    print(f"MCMC Complete. Collected {N_unique_targets} unique points.")
-    print(f"Final Production Acceptance Rate (with static input steps): {avg_acceptance:.1%}")
-    
-    return unique_qs, weights, prob_densities
-
-def do_check(ns, omegas):
-    phi = 1.0
-    pts_per_axis = 100
-    
-    # 1. Dynamically compute the width (sigma) for each individual mode
-    sigma0 = np.sqrt(hbar / omegas[0])
-    sigma1 = np.sqrt(hbar / omegas[1])
-    sigma2 = np.sqrt(hbar / omegas[2])
-    
-    # 2. Build custom axes that extend exactly to 6 * sigma for each mode
-    q1_axis = np.linspace(-6 * sigma0, 6 * sigma0, pts_per_axis)
-    q2_axis = np.linspace(-6 * sigma1, 6 * sigma1, pts_per_axis)
-    q3_axis = np.linspace(-6 * sigma2, 6 * sigma2, pts_per_axis)
-    
-    # 3. Mesh and stack as normal
-    Q1, Q2, Q3 = np.meshgrid(q1_axis, q2_axis, q3_axis)
-    qs = np.column_stack([Q1.ravel(), Q2.ravel(), Q3.ravel()])
-    
-    # 4. Evaluate the wavefunctions
-    for ni, n in enumerate(ns):
-        phi *= independent_harm_osc(n, qs[:, ni], omegas[ni])
-        
-    # 5. Run the check
-    check_normalization(phi, qs)
-
-
-def check_normalization(phi,qs):
+def get_spectrum_A(T, eigenvalues, eigenvectors, basis, omegas, 
+                   w_min=0.0, w_max=0.004, n_points=2000, eta=1e-5):
     """
-    Computes the total integral of |phi|^2 over the space defined by qs.
-    Inputs:
-        phi: 1D array of wavefunction values, shape (N_snapshots,)
-        qs:  2D array of coordinates, shape (N_snapshots, N_modes)
+    Computes the response spectral function A(w) analytically in the frequency domain 
+    for all modes using the Lehmann representation with Lorentzian broadening.
     """
-    num_modes = qs.shape[1]
-    dV = 1.0
+    n_basis = len(eigenvalues)
+    n_modes = basis.shape[1]
     
-    # Automatically calculate the step size (dq) for each individual mode
-    for i in range(num_modes):
-        unique_coords = np.unique(qs[:, i])
-        if len(unique_coords) < 2:
-            raise ValueError(f"Mode {i} does not have enough grid points to integrate.")
+    # ------------------------------------------------------------------
+    # 1. Compute Boltzmann thermal populations
+    # ------------------------------------------------------------------
+    if T == 0 or T is None:
+        weights = np.zeros(n_basis, dtype=np.float64)
+        weights[0] = 1.0
+    else:
+        beta = 1.0 / (kb * T)
+        E_shift = eigenvalues - eigenvalues[0]
+        weights = np.exp(-beta * E_shift)
+        weights /= np.sum(weights)
+
+    # Population differences (P_n - P_m) for absorption/emission balance
+    pop_diff = weights[np.newaxis, :] - weights[:, np.newaxis] # P_n - P_m
+
+    # ------------------------------------------------------------------
+    # 2. Setup Frequency Axis and Transition Energies
+    # ------------------------------------------------------------------
+    w_plot = np.linspace(w_min, w_max, n_points)
+    w_2d = w_plot[np.newaxis, :]  # shape (1, n_points)
+    
+    # Transition energy matrix w_mn = (E_m - E_n) / hbar
+    w_mn_matrix = (eigenvalues[:, np.newaxis] - eigenvalues[np.newaxis, :]) / hbar
+    
+    A_modes = np.zeros((n_modes, n_points), dtype=np.float64)
+
+    # Pre-calculate difference tensor across basis states once: shape (N, N, n_modes)
+    diffs = basis[:, np.newaxis, :] - basis[np.newaxis, :, :]
+
+    # ------------------------------------------------------------------
+    # 3. Loop over all optical modes mu
+    # ------------------------------------------------------------------
+    for mu in range(n_modes):
+        omega_m = omegas[mu]
+        Q_harm_mu = np.zeros((n_basis, n_basis), dtype=np.float64)
         
-        # Distance between two adjacent grid points
-        dq = unique_coords[1] - unique_coords[0]
-        dV *= dq
-    
-    # Total Integral = sum( |phi|^2 ) * dV
-    total_integral = np.sum(np.abs(phi)**2) * dV
-    
-    print("--- Standalone Integration Test ---")
-    print(f"Number of modes detected: {num_modes}")
-    print(f"Calculated Integral:       {total_integral:.6f}")
-    return total_integral
+        # Build mask where all OTHER modes remain unchanged
+        other_modes_mask = np.ones((n_basis, n_basis), dtype=bool)
+        for m_idx in range(n_modes):
+            if m_idx != mu:
+                other_modes_mask &= (diffs[:, :, m_idx] == 0)
+                
+        # Matrix elements: <n| Q | n-1> and <n| Q | n+1>
+        creation_mask = other_modes_mask & (diffs[:, :, mu] == 1)
+        annihilation_mask = other_modes_mask & (diffs[:, :, mu] == -1)
+        
+        # Broadcast quanta to full (N, N) matrix shape matching masks
+        n_quanta_matrix = np.tile(basis[:, mu][:, np.newaxis], (1, n_basis))
+        
+        Q_harm_mu[creation_mask] = np.sqrt(hbar * n_quanta_matrix[creation_mask] / omega_m)
+        Q_harm_mu[annihilation_mask] = np.sqrt(hbar * (n_quanta_matrix[annihilation_mask] + 1.0) / omega_m)
+
+        # Transform to exact eigenbasis: Q_eigen = V^T @ Q_harm @ V
+        Qnm_mu = eigenvectors.T @ Q_harm_mu @ eigenvectors
+        
+        # Transition probability weights: |<m| Q_mu |n>|^2 * (P_n - P_m)
+        transition_weights = (np.abs(Qnm_mu.T)**2) * pop_diff
+
+        # Direct analytical Lorentzian summation over transitions
+        for n in range(n_basis):
+            for m in range(n_basis):
+                w_transition = w_mn_matrix[m, n]
+                S = transition_weights[m, n]
+                
+                # Filter positive absorptive transitions
+                if S <= 1e-15 or w_transition <= 0:
+                    continue
+                    
+                lorentzian = (1.0 / np.pi) * (eta / ((w_2d - w_transition)**2 + eta**2))
+                A_modes[mu] += S * lorentzian[0]
+
+    # Total response is the sum across all modes
+    A_total = np.sum(A_modes, axis=0)
+
+    return w_plot, A_total, A_modes
 
 def K_nm(ns,ms,omegas):
     n_modes = ns.shape[0]
@@ -683,16 +577,6 @@ def K_nm(ns,ms,omegas):
                 kinetic += -(hbar * (omegas[mu]) / 4) * np.sqrt((ns[mu])*(ns[mu]-1))
     return kinetic
 
-def V_nm_st(ns,ms,omegas,Qns,Vs,weights,rphi2):
-
-    phi_n = get_basis_function(ns,Qns,omegas)
-    phi_m = get_basis_function(ms,Qns,omegas)
-
-    # In principle, phis are real.
-    integrand = np.conjugate(phi_n)*phi_m*Vs/(rphi2)*weights
-
-    return np.sum(integrand)/np.sum(weights)
-
 def V_nm(ns,ms,omegas,Qns,Vs,weights):
 
     phi_n = get_basis_function(ns,Qns,omegas)
@@ -703,45 +587,54 @@ def V_nm(ns,ms,omegas,Qns,Vs,weights):
 
     return np.sum(integrand*weights)
 
-def construct_basis(nmax, n_modes):
-
-    n_modes_opt = n_modes - 3
-
-    # Maximum quantum number for each non-acoustic mode
-    nmax_opt = nmax[3:]
-
-    basis = []
-
-    # Total number of vibrational quanta
-    for k in range(np.sum(nmax_opt) + 1):
-
-        # All ways of distributing k quanta among the modes
-        for comb in itertools.combinations_with_replacement(
-            range(n_modes_opt), k
-        ):
-
-            ns = np.zeros(n_modes_opt, dtype=np.int64)
-
-            for mode in comb:
-                ns[mode] += 1
-
-            # Keep only states satisfying the mode-specific nmax
-            if np.all(ns <= nmax_opt):
-                basis.append(ns)
-
-    return np.array(basis)
-
-def construct_nmm_basis(nmax, n_modes):
-
-    n_modes_opt = n_modes-3
-    basis = [np.array([0,0,0], dtype=np.int64)]
-    for mode in range(n_modes_opt):
-        for k in range(1,nmax[mode+3]+1):
-            ns = np.zeros(n_modes_opt, dtype=np.int64)
-            ns[mode] = k
-            basis.append(ns)
+def construct_basis(nmax, decoupled, n_modes):
+    """
+    Constructs the vibrational basis ONLY for the coupled modes (where decoupled == 0).
+    The returned array has shape (N_coupled_states, n_coupled), matching only the 
+    number of coupled dimensions (zeros in the decoupled array).
     
-    return np.array(basis)
+    Parameters:
+    -----------
+    nmax : list or np.ndarray
+        Maximum quantum number per mode (excluding acoustic modes).
+    decoupled : list or np.ndarray
+        Array where 1 = decoupled (pure harmonic), 0 = coupled.
+    n_modes : int
+        Total number of non-acoustic optical modes.
+        
+    Returns:
+    --------
+    coupled_basis : np.ndarray, shape (N_coupled_states, n_coupled)
+        Reduced basis vectors containing quantum numbers only for coupled modes.
+    """
+    nmax_opt = np.array(nmax[:n_modes], dtype=np.int64)
+    decoupled_opt = np.array(decoupled[:n_modes], dtype=np.int64)
+    
+    # Identify indices of coupled modes (where decoupled == 0)
+    coupled_indices = np.where(decoupled_opt == 0)[0]
+    
+    nmax_coupled = nmax_opt[coupled_indices]
+    n_coupled = len(coupled_indices)
+    
+    # If all modes are decoupled, return a single ground state for 0 coupled modes
+    if n_coupled == 0:
+        return np.zeros((1, 0), dtype=np.int64)
+
+    coupled_basis = []
+
+    # Distribute quanta among coupled modes only
+    for k in range(np.sum(nmax_coupled) + 1):
+        for comb in itertools.combinations_with_replacement(range(n_coupled), k):
+            ns_coupled = np.zeros(n_coupled, dtype=np.int64)
+            for mode_idx in comb:
+                ns_coupled[mode_idx] += 1
+
+            # Enforce mode-specific nmax for coupled modes
+            if np.all(ns_coupled <= nmax_coupled):
+                coupled_basis.append(ns_coupled)
+
+    return np.array(coupled_basis, dtype=np.int64)
+
 
 def diagonalize_hamiltonian(basis, ensemble, Qns, weights, model, no_sym):
 
@@ -760,22 +653,21 @@ def diagonalize_hamiltonian(basis, ensemble, Qns, weights, model, no_sym):
 
     ws, pols = ensemble.current_dyn.DiagonalizeSupercell()
 
-    u_disps = Qns @ pols.T[3:,:] / np.sqrt(masses_sc_flat)
+    u_disps = Qns @ pols.T[3:4,:] / np.sqrt(masses_sc_flat)
     energies = model.get_energies(u_disps)
 
-    sym_u_disps = np.empty([nconf*nsym,u_disps.shape[1]], dtype=np.float64)
-    sym_energies = np.empty([nconf*nsym], dtype=np.float64)
-    #sym_rphi2 = np.empty([nconf*nsym], dtype=np.float64)
-    sym_weights = np.empty([nconf*nsym], dtype=np.int64)
+    # if not no_sym:
+    #     sym_u_disps = np.empty([nconf*nsym,u_disps.shape[1]], dtype=np.float64)
+    #     sym_energies = np.empty([nconf*nsym], dtype=np.float64)
+    #     sym_weights = np.empty([nconf*nsym], dtype=np.int64)
 
-    for ri,rot in enumerate(rot_cart):
-        for si,dR in enumerate(u_disps):
-            for ai in range(nat):
-                sym_u_disps[ri*nconf+si,mapping[ai,ri]*3:(mapping[ai,ri]+1)*3] = rot @ dR[ai*3:(ai+1)*3]
-        sym_energies[ri*nconf:(ri+1)*nconf] = energies
-        #sym_rphi2[ri*nconf:(ri+1)*nconf] = rphi2
-        sym_weights[ri*nconf:(ri+1)*nconf] = weights
-    sym_Qns = (sym_u_disps @ pols * np.sqrt(masses_sc_flat))[:,3:]
+    #     for ri,rot in enumerate(rot_cart):
+    #         for si,dR in enumerate(u_disps):
+    #             for ai in range(nat):
+    #                 sym_u_disps[ri*nconf+si,mapping[ai,ri]*3:(mapping[ai,ri]+1)*3] = rot @ dR[ai*3:(ai+1)*3]
+    #         sym_energies[ri*nconf:(ri+1)*nconf] = energies
+    #         sym_weights[ri*nconf:(ri+1)*nconf] = weights
+    #     sym_Qns = (sym_u_disps @ pols * np.sqrt(masses_sc_flat))[:,5:]
 
     H = np.zeros((n_states, n_states), dtype=np.float64)
 
@@ -784,74 +676,15 @@ def diagonalize_hamiltonian(basis, ensemble, Qns, weights, model, no_sym):
             ns = basis[ni]
             ms = basis[mj]
             if no_sym:
-                #H_ij = K_nm(ns,ms,ws[3:]) + V_nm_st(ns,ms,ws[3:],Qns,energies,weights,rphi2)
-                H_ij = K_nm(ns,ms,ws[3:]) + V_nm(ns,ms,ws[3:],Qns,energies,weights)
-            else:
-                #H_ij = K_nm(ns,ms,ws[3:]) + V_nm_st(ns,ms,ws[3:],sym_Qns,sym_energies,sym_weights,sym_rphi2)
-                H_ij = K_nm(ns,ms,ws[3:]) + V_nm(ns,ms,ws[3:],sym_Qns,sym_energies,sym_weights)
-            
-            print(f"K({ni},{mj}):",K_nm(ns,ms,ws[3:]))
-            print(f"V({ni},{mj}):",V_nm(ns,ms,ws[3:],Qns,energies,weights))
+                H_ij = K_nm(ns,ms,ws[3:4]) + V_nm(ns,ms,ws[3:4],Qns,energies,weights)
+            # else:
+            #     H_ij = K_nm(ns,ms,ws[5:]) + V_nm(ns,ms,ws[5:],sym_Qns,sym_energies,sym_weights)
             
             H[ni,mj] = H_ij
             if ni != mj:
                 H[mj,ni] = H_ij
     eigenvalues, eigenvectors = eigh(H)
 
-    return eigenvalues, eigenvectors, H
-
-def diagonalize_hamiltonian_st(basis, ensemble, Qns, weights, model, rphi2, no_sym):
-
-    mapping, rot_cart, map_uc, map_tr, T_list, T_list_frac = Classify.map_singlet(ensemble.current_dyn)
-
-    nsym = rot_cart.shape[0]
-    nconf = Qns.shape[0]
-    nat = ensemble.current_dyn.structure.N_atoms
-
-    n_states = basis.shape[0]
-
-    super_dyn = ensemble.current_dyn.GenerateSupercellDyn(ensemble.supercell)
-    
-    masses_sc = super_dyn.structure.get_masses_array()
-    masses_sc_flat = np.repeat(masses_sc, 3)
-
-
-    ws, pols = ensemble.current_dyn.DiagonalizeSupercell()
-
-    u_disps = Qns @ pols.T[3:,:] / np.sqrt(masses_sc_flat)
-    energies = model.get_energies(u_disps)
-
-    sym_u_disps = np.empty([nconf*nsym,u_disps.shape[1]], dtype=np.float64)
-    sym_energies = np.empty([nconf*nsym], dtype=np.float64)
-    sym_rphi2 = np.empty([nconf*nsym], dtype=np.float64)
-    sym_weights = np.empty([nconf*nsym], dtype=np.int64)
-
-    for ri,rot in enumerate(rot_cart):
-        for si,dR in enumerate(u_disps):
-            for ai in range(nat):
-                sym_u_disps[ri*nconf+si,mapping[ai,ri]*3:(mapping[ai,ri]+1)*3] = rot @ dR[ai*3:(ai+1)*3]
-        sym_energies[ri*nconf:(ri+1)*nconf] = energies
-        sym_rphi2[ri*nconf:(ri+1)*nconf] = rphi2
-        sym_weights[ri*nconf:(ri+1)*nconf] = weights
-    sym_Qns = (sym_u_disps @ pols * np.sqrt(masses_sc_flat))[:,3:]
-
-    H = np.zeros((n_states, n_states), dtype=np.float64)
-
-    for ni in range(n_states):
-        for mj in range(n_states):
-            ns = basis[ni]
-            ms = basis[mj]
-            
-            if no_sym:
-                H_ij = K_nm(ns,ms,ws[3:]) + V_nm_st(ns,ms,ws[3:],Qns,energies,weights,rphi2)
-                # H_ij = K_nm(ns,ms,ws[3:]) + V_nm(ns,ms,ws[3:],Qns,energies,weights)
-            else:
-                H_ij = K_nm(ns,ms,ws[3:]) + V_nm_st(ns,ms,ws[3:],sym_Qns,sym_energies,sym_weights,sym_rphi2)
-                # H_ij = K_nm(ns,ms,ws[3:]) + V_nm(ns,ms,ws[3:],sym_Qns,sym_energies,sym_weights,sym_rphi2)
-            H[ni,mj] = H_ij
-            if ni != mj:
-                H[mj,ni] = H_ij
-    eigenvalues, eigenvectors = eigh(H)
     return eigenvalues, eigenvectors, H
 
 def get_eigenvalues(basis, omega):
@@ -881,7 +714,9 @@ def get_eigenvalues(basis, omega):
     
     return eigenvalues
 
-def get_new_correction(model, ensemble, T, n_max, N, step_size, alpha_mix=0.01, no_sym=False):
+def get_new_correction(model, ensemble, T, n_max, decoupled, N, step_size, alpha_mix=0.01, no_sym=False):
+
+    decoupled = np.asarray(decoupled)
 
     super_dyn = ensemble.current_dyn.GenerateSupercellDyn(ensemble.supercell)
     nat_sc = super_dyn.structure.N_atoms
@@ -889,20 +724,15 @@ def get_new_correction(model, ensemble, T, n_max, N, step_size, alpha_mix=0.01, 
 
     w, pols = ensemble.current_dyn.DiagonalizeSupercell()
 
-    basis = construct_basis(n_max, n_modes)
-    eigenvectors0 = np.diag(np.ones(basis.shape[0])) # Hasteko. Gero hau hobetu beharko da.
-    eigenvalues0 = get_eigenvalues(basis, w[3:]) # Hasteko. Gero hau hobetu beharko da.
-
+    w_coupled = w[decoupled==0]
+    basis_coupled = construct_basis(n_max, decoupled, n_modes)
     print("Iteration 0")
 
-    #weighted_samples, weights, rphi2 = sample_wavefunction_unique(basis,eigenvectors0,eigenvalues0,eigenvectors0,eigenvalues0,alpha_mix,T,omegas=w[3:],N_unique_targets=N,step_size=step_size)
-    weighted_samples, weights = build_general_quadrature_grid(basis,w[3:])
+    weighted_samples, weights = build_general_quadrature_grid(basis_coupled,w_coupled)
 
-    #eigenvalues1, eigenvectors1, H = diagonalize_hamiltonian(basis, ensemble, weighted_samples, weights, model, rphi2, no_sym)
+    eigenvalues1, eigenvectors1, H = diagonalize_hamiltonian(basis_coupled, ensemble, weighted_samples, weights, model, no_sym)
     breakpoint()
-    eigenvalues1, eigenvectors1, H = diagonalize_hamiltonian(basis, ensemble, weighted_samples, weights, model, no_sym)
-    print("E(0)=", eigenvalues1[0])
-    print(eigenvectors1[:,0])
+    eigenvalues1, eigenvectors1, basis = expand_decoupled_system(eigenvalues1,eigenvectors1,basis_coupled,n_max[3:],decoupled[3:],w[3:])
 
     mapping, rot_cart, map_uc, map_tr, T_list, T_list_frac = Classify.map_singlet(ensemble.current_dyn)
 
@@ -910,30 +740,26 @@ def get_new_correction(model, ensemble, T, n_max, N, step_size, alpha_mix=0.01, 
     nconf = weighted_samples.shape[0]
     nat = ensemble.current_dyn.structure.N_atoms
 
-    n_states = basis.shape[0]
-
     super_dyn = ensemble.current_dyn.GenerateSupercellDyn(ensemble.supercell)
     
     masses_sc = super_dyn.structure.get_masses_array()
     masses_sc_flat = np.repeat(masses_sc, 3)
 
-    u_disps = weighted_samples @ pols.T[3:,:] / np.sqrt(masses_sc_flat)
+    u_disps = weighted_samples @ pols.T[5:,:] / np.sqrt(masses_sc_flat)
+    if not no_sym:
+        sym_u_disps = np.empty([nconf*nsym,u_disps.shape[1]], dtype=np.float64)
+        sym_rphi2 = np.empty([nconf*nsym], dtype=np.float64)
+        sym_weights = np.empty([nconf*nsym], dtype=np.int64)
 
-    sym_u_disps = np.empty([nconf*nsym,u_disps.shape[1]], dtype=np.float64)
-    sym_rphi2 = np.empty([nconf*nsym], dtype=np.float64)
-    sym_weights = np.empty([nconf*nsym], dtype=np.int64)
+        for ri,rot in enumerate(rot_cart):
+            for si,dR in enumerate(u_disps):
+                for ai in range(nat):
+                    sym_u_disps[ri*nconf+si,mapping[ai,ri]*3:(mapping[ai,ri]+1)*3] = rot @ dR[ai*3:(ai+1)*3]
+            #sym_rphi2[ri*nconf:(ri+1)*nconf] = rphi2
+            sym_weights[ri*nconf:(ri+1)*nconf] = weights
+        sym_weighted_samples = (sym_u_disps @ pols * np.sqrt(masses_sc_flat))[:,3:]
 
-    for ri,rot in enumerate(rot_cart):
-        for si,dR in enumerate(u_disps):
-            for ai in range(nat):
-                sym_u_disps[ri*nconf+si,mapping[ai,ri]*3:(mapping[ai,ri]+1)*3] = rot @ dR[ai*3:(ai+1)*3]
-        #sym_rphi2[ri*nconf:(ri+1)*nconf] = rphi2
-        sym_weights[ri*nconf:(ri+1)*nconf] = weights
-    sym_weighted_samples = (sym_u_disps @ pols * np.sqrt(masses_sc_flat))[:,3:]
-
-    for ns in basis:
-        print(f"\tKong-liu ratio for [{ns[0]},{ns[1]},{ns[2]}]", effective_sample_size_ratio(get_basis_function([ns[0],ns[1],ns[2]],sym_weighted_samples,w[3:]), np.sqrt(sym_rphi2), sym_weights))
-    model.plot_quartic_phi(eigenvalues1,eigenvectors1,basis,w,pols,sym_weighted_samples,sym_weights)
+    model.plot_quartic_phi(eigenvalues1,eigenvectors1,basis,w,pols,weighted_samples,weights,T)
     print("")
 
 
@@ -965,44 +791,6 @@ def razavy_second_deriv(x, xi=1.0, j=2, lambda_=1.0, scale=1.0):
     deriv2 = (lambda_**2) * ((2 * xi**2) * np.cosh(4*u) - (2 * xi * (2*j + 1)) * np.cosh(2*u))
     return scale * deriv2
 
-def quartic_potential(x, a, b):
-    """
-    Computes V(x) = a*x^4 - b*x^2
-    """
-    return a * x**4 - b * x**2
-
-def quartic_first_deriv(x, a, b):
-    """
-    Computes the force: F = -dV/dx = 2*b*x - 4*a*x^3
-    """
-    # Note: Returning the derivative (dV/dx)
-    # If you want the Force (F = -dV/dx), use -1 * this result
-    return 4 * a * x**3 - 2 * b * x
-
-def quartic_second_deriv(x, a, b):
-    """
-    Computes the curvature: d^2V/dx^2 = 12*a*x^2 - 2*b
-    """
-    return 12 * a * x**2 - 2 * b
-
-def sextic_potential(x, a, b, c):
-    """
-    V(x) = c*x^6 + a*x^4 - b*x^2
-    """
-    return c*x**6 + a*x**4 - b*x**2
-
-def sextic_first_deriv(x, a, b, c):
-    """
-    Force related: dV/dx = 6*c*x^5 + 4*a*x^3 - 2*b*x
-    """
-    return 6*c*x**5 + 4*a*x**3 - 2*b*x
-
-def sextic_second_deriv(x, a, b, c):
-    """
-    Hessian: d^2V/dx^2 = 30*c*x^4 + 12*a*x^2 - 2*b
-    """
-    return 30*c*x**4 + 12*a*x**2 - 2*b
-
 def octic_potential(x, a, b, c, d):
     """
     V(x) = a*x^2 + b*x^4 + c*x^6 + d*x^8
@@ -1026,29 +814,6 @@ def harmonic_potential(x, omega=1.0):
                                    
 def harmonic_first_deriv(x, omega=1.0):
     return omega**2 * x
-
-def effective_sample_size_ratio(phi_n, phi_proposal, weights=None):
-    """
-    Returns the ESS ratio (ESS / N) as a fraction between 0 and 1,
-    safely handling both real and complex wavefunctions.
-    """
-    if weights is None:
-        weights = np.ones(phi_n.shape[0])
-        
-    # Calculate the physical probability densities (squared magnitudes)
-    # np.abs() squared correctly handles complex conjugates: |a + ib|^2 = a^2 + b^2
-    target_density = np.abs(phi_n)**2
-    proposal_density = np.abs(phi_proposal)**2
-    
-    # Calculate the importance weights directly
-    # (Using a small epsilon to prevent any division-by-zero errors)
-    imp_weights = target_density / (proposal_density + 1e-15)
-    
-    # Compute the weighted means of the importance weights
-    w_mean = np.sum(imp_weights * weights) / np.sum(weights)
-    w2_mean = np.sum((imp_weights**2) * weights) / np.sum(weights)
-    
-    return w_mean**2 / w2_mean
 
 def ensemble_from_model(model, dyn, N=100, Temperature=0, pop_id=1):
     dyn_sscha_final=CC.Phonons.Phonons(dyn, nqirr=1)
@@ -1146,3 +911,138 @@ def build_general_quadrature_grid(basis, omegas):
         weights_nd *= w_grid.ravel()
         
     return grid_nd, weights_nd
+
+def get_reference_rho(a, b, c, d, T=0.0, x_max=200, N=1000):
+    """
+    Solves the 1D Schrödinger equation for an octic potential and returns
+    strictly the spatial coordinate grid and thermal probability density rho(x, T).
+    
+    Inputs:
+        a, b, c, d: Coefficients for octic_potential(x, a, b, c, d)
+        T: Temperature in matching units (defaults to 0.0)
+        kb: Boltzmann constant
+        hbar: Reduced Planck's constant
+        x_max: Grid boundary
+        N: Number of grid points
+    
+    Returns:
+        x: 1D spatial coordinate grid
+        rho_thermal: Spatial probability density distribution rho(x, T)
+    """
+    # 1. Spatial grid setup
+    x = np.linspace(-x_max, x_max, N)
+    dx = x[1] - x[0]
+    
+    # 2. Hamiltonian construction
+    main_diag = np.ones(N) * (-2.0)
+    off_diag = np.ones(N - 1) * 1.0
+    D2 = (np.diag(main_diag) + np.diag(off_diag, k=1) + np.diag(off_diag, k=-1)) / (dx**2)
+    T_mat = -0.5 * (hbar**2) * D2
+    V_mat = np.diag(octic_potential(x, a, b, c, d))
+    
+    H = T_mat + V_mat
+    
+    # 3. Solve for all eigenvalues and eigenvectors
+    energies, eigenvectors = eigh(H)
+    
+    # 4. Compute continuous wavefunctions psi_k(x) = eigenvector_k / sqrt(dx)
+    psi_all = eigenvectors / np.sqrt(dx)
+    
+    # 5. Compute thermal probability density rho(x, T)
+    if T == 0 or T is None:
+        # At T=0, return pure ground state density |psi_0(x)|^2
+        rho_thermal = psi_all[:, 0]**2
+    else:
+        # Boltzmann weights P_k = exp(-(E_k - E_0) / k_B T) / Z
+        beta = 1.0 / (kb * T)
+        E_shift = energies - energies[0]
+        weights = np.exp(-beta * E_shift)
+        weights /= np.sum(weights)
+        
+        # Matrix-vector product: sum_k P_k * |psi_k(x)|^2
+        rho_thermal = (psi_all**2) @ weights
+        
+    return x, rho_thermal, energies[0]
+
+def expand_decoupled_system(evals_coupled, evecs_coupled, basis_coupled, nmax, decoupled, omegas, hbar=1.0):
+    """
+    Expands the eigenvalues, eigenvectors, and basis vectors from the reduced coupled subspace 
+    to the full system space using analytical harmonic spectra for decoupled modes.
+    Includes zero-point energy (ZPE) for decoupled modes.
+    
+    Parameters:
+    -----------
+    evals_coupled : np.ndarray, shape (N_coupled,)
+        Eigenvalues from diagonalizing the coupled block.
+    evecs_coupled : np.ndarray, shape (N_coupled, N_coupled)
+        Eigenvectors from diagonalizing the coupled block.
+    basis_coupled : np.ndarray, shape (N_coupled, n_coupled)
+        Reduced coupled basis containing quantum numbers ONLY for coupled modes.
+    nmax : list or np.ndarray
+        Maximum quantum number per mode [nmax_0, nmax_1, ...].
+    decoupled : list or np.ndarray
+        Mask where 1 = decoupled (pure harmonic), 0 = coupled.
+    omegas : np.ndarray
+        Frequencies for all optical modes.
+    hbar : float, optional
+        Planck's reduced constant (default 1.0).
+        
+    Returns:
+    --------
+    evals_full : np.ndarray, shape (N_full,)
+        Expanded energy eigenvalues (with decoupled ZPE and excitations).
+    evecs_full : np.ndarray, shape (N_full, N_full)
+        Expanded block-diagonal eigenvector matrix.
+    basis_full : np.ndarray, shape (N_full, n_modes)
+        Complete basis quantum number array for all states.
+    """
+    decoupled_arr = np.array(decoupled, dtype=int)
+    decoupled_indices = np.where(decoupled_arr == 1)[0]
+    coupled_indices = np.where(decoupled_arr == 0)[0]
+    
+    n_modes = len(decoupled)
+    
+    # 1. Slice frequencies using boolean/index selection
+    omegas_decoupled = omegas[decoupled_indices]
+    
+    # 2. Constant Zero-Point Energy (ZPE) of all decoupled modes
+    E_zpe = np.sum(0.5 * hbar * omegas_decoupled)
+    
+    # 3. Generate all quantum number combinations for decoupled modes
+    dec_ranges = [range(nmax[m] + 1) for m in decoupled_indices]
+    dec_combinations = list(itertools.product(*dec_ranges))
+    
+    n_blocks = len(dec_combinations)
+    n_coupled = len(evals_coupled)
+    
+    evals_full = []
+    basis_full = []
+    
+    # Block-diagonal eigenvector allocation
+    n_full = n_blocks * n_coupled
+    evecs_full = np.zeros((n_full, n_full), dtype=np.float64)
+    
+    # 4. Expand system state by state
+    for b_idx, dec_state in enumerate(dec_combinations):
+        # Excitation energy + ZPE: sum( n_i * hbar * w_i ) + E_zpe
+        E_offset = E_zpe + np.sum(np.array(dec_state) * hbar * omegas_decoupled)
+        
+        # Expand Eigenvalues
+        evals_full.append(evals_coupled + E_offset)
+        
+        # Expand Basis Quantum Numbers into full n_modes dimension
+        for coupled_row in basis_coupled:
+            full_state = np.zeros(n_modes, dtype=np.int64)
+            full_state[decoupled_indices] = dec_state
+            full_state[coupled_indices] = coupled_row
+            basis_full.append(full_state)
+            
+        # Fill block-diagonal eigenvector matrix
+        start = b_idx * n_coupled
+        end = (b_idx + 1) * n_coupled
+        evecs_full[start:end, start:end] = evecs_coupled
+
+    evals_full = np.concatenate(evals_full)
+    basis_full = np.array(basis_full, dtype=np.int64)
+    
+    return evals_full, evecs_full, basis_full
