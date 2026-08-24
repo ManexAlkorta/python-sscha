@@ -12,7 +12,7 @@ from scipy.special import factorial
 from scipy.linalg import eigh
 
 hbar = 1 # Atomic units
-kb = 3.166811e-6/2 # Ry/K
+kb = 1.5834055e-6 # Ry/K
 
 angstroms2bohr = 1.8897259886
 Ry2eV = 13.6056980659

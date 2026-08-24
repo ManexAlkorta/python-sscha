@@ -225,6 +225,8 @@ py.install_sources([
   'Modules/Classify.py',
   'Modules/qClassify.py',
   'Modules/Beyond_SSCHA.py',
+  'Modules/Beyond.py',
+  'Modules/OcticModel.py',
   ],
   subdir: 'sscha',
 )
