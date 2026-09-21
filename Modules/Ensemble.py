@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from __future__ import print_function
+from __future__ import print_function, annotations
 import sys, os
 import warnings
 import numpy as np
@@ -8,6 +8,12 @@ import time
 
 import sscha.Classify as Classify
 import sscha.qClassify as qClassify
+try:
+    from typing import Union
+    from flare.bffs.gp import GaussianProcess
+    from flare.bffs.sgp import SGP_Wrapper
+except ImportError:
+    pass
 
 """
 This is part of the program python-sscha
@@ -78,34 +84,30 @@ except:
 __EPSILON__ =  1e-6
 __A_TO_BOHR__ = 1.889725989
 
-__JULIA_EXT__ = False
+# The Julia runtime is booted lazily by JuliaExt at the first actual use
+# (e.g. the first fourier gradient evaluation), so that importing
+# sscha.Ensemble stays fast.
+import sscha.JuliaExt as JuliaExt
+
+
+class _LazyJuliaModule(object):
+    """Lazy stand-in for the old "import julia" module.
+
+    Accessing the .Main attribute initializes the Julia runtime (and includes
+    fourier_gradient.jl) on first use. All the julia.Main.xxx(...) call sites
+    below keep working unchanged with both the juliacall and pyjulia backends.
+    """
+    @property
+    def Main(self):
+        return JuliaExt.get_main()
+
+
+julia = _LazyJuliaModule()
+
+# Deprecated alias kept for backward compatibility: it only tells whether a
+# Julia backend is installed, the runtime is not initialized at import time.
+__JULIA_EXT__ = JuliaExt.available()
 __JULIA_ERROR__ = ""
-try:
-    import julia, julia.Main
-    julia.Main.include(os.path.join(os.path.dirname(__file__),
-        "fourier_gradient.jl"))
-    __JULIA_EXT__ = True
-except:
-    try:
-        import julia
-        try:
-            from julia.api import Julia
-            jl = Julia(compiled_modules=False)
-            import julia.Main
-            julia.Main.include(os.path.join(os.path.dirname(__file__),
-                "fourier_gradient.jl"))
-            __JULIA_EXT__ = True
-        except:
-            # Install the required modules
-            julia.install()
-            try:
-                julia.Main.include(os.path.join(os.path.dirname(__file__),
-                    "fourier_gradient.jl"))
-                __JULIA_EXT__ = True
-            except Exception as e:
-                warnings.warn("Julia extension not available.\nError: {}".format(e))
-    except Exception as e:
-        warnings.warn("Julia extension not available.\nError: {}".format(e))
 
 
 try:
@@ -173,6 +175,25 @@ class Ensemble:
         self.pols_0 = None
         self.current_w = None
         self.current_pols = None
+        
+        # On-the-fly key-word.
+        # Eventually it will be best to devise a class for this instead.
+        self.gp_model = None
+        self.flare_calc = None
+        self.std_tolerance = None
+        self.max_atoms_added = None
+        self.update_style = None
+        self.update_threshold = None
+        self.build_mode = None
+        self.output = None
+        self.output_name = None
+        self.checkpt_name = None
+        self.flare_name = None
+        self.atoms_name = None
+        self.checkpt_files = None
+        self.write_model = None
+        self.init_atoms = None
+        self.train_hyps = None
 
         # The frequencies and polarizations of the ensemble
         # In q space
@@ -237,10 +258,6 @@ Error, the supercell does not match with the q grid of the dynamical matrix.
         self.supercell_structure = super_struct
         self.itau = itau + 1
 
-        # To avoid to recompute each time the same variables store something usefull here
-        self.q_start = np.zeros( (self.N, Nsc * 3))
-        self.current_q = np.zeros( (self.N, Nsc * 3))
-
         self.q_opposite_index = None
 
         # Store also the displacements
@@ -251,19 +268,6 @@ Error, the supercell does not match with the q grid of the dynamical matrix.
 
         # A flag that memorize if the ensemble has also the stresses
         self.has_stress = True
-
-        # Store data for calculations of 3FC elements:
-        self.a = np.zeros( (Nsc * 3), dtype = np.double)
-        self.new_pol = np.zeros( (Nsc, Nsc * 3, 3), dtype = np.double)
-        # If the element is sym:
-        self.ur = np.zeros( (self.N, Nsc * 3)) 
-        self.upsilon = np.zeros( (Nsc*3, Nsc * 3))
-        # Symmetry data for sym 3FC:
-        self.nsym = 0
-        self.s_cart = np.zeros( (3, 3, 48) , dtype = np.float64, order = "F")
-        self.s_inv_cart = np.zeros( (3, 3, 48) , dtype = np.float64, order = "F")
-        self.irt = np.zeros( (48, Nsc), dtype = np.intc, order = "F")
-        self.translations_irt = np.zeros( (Nsc, np.prod(self.supercell)), dtype = np.intc, order = "F") 
 
         # A flag for each configuration that check if it possess a force and a stress
         self.force_computed = None
@@ -724,11 +728,6 @@ Error, the file '{}' is missing from the ensemble
         self.rho = np.ones(self.N, dtype = np.float64)
 
 
-        t1 = time.time()
-        #self.q_start = CC.Manipulate.GetQ_vectors(self.structures, dyn_supercell, self.u_disps)
-        t2 = time.time()
-        #self.current_q = self.q_start.copy()
-
         p_count = np.sum(self.stress_computed.astype(int))
         if p_count > 0:
             self.has_stress = True
@@ -846,11 +845,6 @@ Error, the following stress files are missing from the ensemble:
                 pass
 
         self.rho = np.ones(self.N, dtype = np.float64)
-
-        t1 = time.time()
-        # self.q_start = CC.Manipulate.GetQ_vectors(self.structures, dyn_supercell, self.u_disps)
-        t2 = time.time()
-        # self.current_q = self.q_start.copy()
 
         if count_stress == self.N:
             self.has_stress = True
@@ -1812,20 +1806,12 @@ DETAILS OF ERROR:
 
 
 
-        # Convert the q vectors in the Hartree units
-        #old_q = self.q_start * np.sqrt(np.float64(2)) * __A_TO_BOHR__
-        #new_q = self.current_q * np.sqrt(np.float64(2)) * __A_TO_BOHR__
-
-
-        #t1 = time.time()
-        #self.rho = SCHAModules.stochastic.get_gaussian_weight(new_q, old_q, new_a, old_a)
-        #t2 = time.time()
-
         if __DEBUG_RHO__:
             print( " ==== [UPDATE RHO DEBUGGING] ==== ")
             print( " INPUT INFO: ")
             np.savetxt("rho_%05d.dat" % self.__debug_index__, self.rho)
             print( " rho saved in ", "rho_%05d.dat" % self.__debug_index__)
+
 
         # Get the two covariance matrix
         t1 = time.time()
@@ -2034,15 +2020,6 @@ DETAILS OF ERROR:
         #     # TODO: this method recomputes the displacements, it is useless since we already have them in self.u_disps
 
 
-
-        # Convert the q vectors in the Hartree units
-        #old_q = self.q_start * np.sqrt(np.float64(2)) * __A_TO_BOHR__
-        #new_q = self.current_q * np.sqrt(np.float64(2)) * __A_TO_BOHR__
-
-
-        #t1 = time.time()
-        #self.rho = SCHAModules.stochastic.get_gaussian_weight(new_q, old_q, new_a, old_a)
-        #t2 = time.time()
 
         if __DEBUG_RHO__:
             print( " ==== [UPDATE RHO DEBUGGING] ==== ")
@@ -3136,9 +3113,6 @@ Error while loading the julia module.
 
 #         #n_modes = len(w)
 
-#         # Convert the q vector into Ha units
-#         q_new = np.array(self.current_q, dtype = np.float64) * np.sqrt(2) * __A_TO_BOHR__
-
 #         # Get the ityp variable
 #         #ityp = self.current_dyn.structure.get_atomic_types()
 
@@ -3911,6 +3885,17 @@ Error while loading the julia module.
         nat_sc = int(np.shape(pols)[0] / 3)
         nat = self.dyn_0.structure.N_atoms
 
+        a = np.zeros( (nat_sc * 3), dtype = np.double)
+        new_pol = np.zeros( (nat_sc, nat_sc * 3, 3), dtype = np.double)
+        # If the element is sym:
+        ur = np.zeros( (self.N, nat_sc * 3)) 
+        upsilon = np.zeros( (nat_sc*3, nat_sc * 3))
+        # Symmetry data for sym 3FC:
+        s_cart = np.zeros( (3, 3, 48) , dtype = np.float64, order = "F")
+        s_inv_cart = np.zeros( (3, 3, 48) , dtype = np.float64, order = "F")
+        irt = np.zeros( (48, nat_sc), dtype = np.intc, order = "F")
+        translations_irt = np.zeros( (nat_sc, np.prod(self.supercell)), dtype = np.intc, order = "F")
+        
         # Get the translational modes
         if not self.ignore_small_w:
             trans = CC.Methods.get_translations(pols, super_structure.get_masses_array())
@@ -3933,25 +3918,25 @@ Error while loading the julia module.
         u = self.u_disps.reshape((self.N, nat_sc, 3), order = "C") #/ Bohr
         
         log_err = "err_yesrho"
-        self.a = SCHAModules.thermodynamic.w_to_a(w, self.current_T)
+        a = SCHAModules.thermodynamic.w_to_a(w, self.current_T)
         # Get the polarization vectors in the correct format
         for i in range(nat_sc):
             for j in range(n_modes):
-                self.new_pol[i, j, :] = pols[3*i : 3*(i+1), j]
+                new_pol[i, j, :] = pols[3*i : 3*(i+1), j]
 
         #Calculating rotated displacements and upsilon matrix"
-        self.ur, self.upsilon = SCHAModules.get_ur_upsilon_matrices(self.a, self.new_pol, trans, amass, ityp, u)
+        ur, upsilon = SCHAModules.get_ur_upsilon_matrices(a, new_pol, trans, amass, ityp, u)
         #Obtaining symmetry data
         qe_sym = CC.symmetries.QE_Symmetry(super_structure)
         qe_sym.SetupFromSPGLIB() 
 
         # SpaceGroup symmetries data
-        self.nsym, self.s_cart, self.s_inv_cart, self.irt = qe_sym.QE_nsym, qe_sym.QE_s_cart, qe_sym.QE_s_inv_cart, qe_sym.QE_irt
-        self.s_cart = np.asfortranarray(self.s_cart)
-        self.s_inv_cart = np.asfortranarray(self.s_inv_cart)
+        s_cart, s_inv_cart, irt = qe_sym.QE_s_cart, qe_sym.QE_s_inv_cart, qe_sym.QE_irt
+        s_cart = np.asfortranarray(s_cart)
+        s_inv_cart = np.asfortranarray(s_inv_cart)
 
         #Translations
-        self.translations_irt = qe_sym.QE_translations_irt
+        translations_irt = qe_sym.QE_translations_irt
         #self.prepare_sym_third_fc = False
 
         wq = np.empty(nat*3, dtype=np.float64)
@@ -4048,7 +4033,7 @@ Error while loading the julia module.
         nat = self.current_dyn.structure.N_atoms
         n_modes = self.current_dyn.structure.N_atoms*mod[0]*mod[1]*mod[2]*3
 
-        ref_3fc = SCHAModules.module_hess.get_ref3fc(nat, orbit3a, indep_3fc_elem, n_indep_3fc_elem, kernel_3fc, rot_3fc, self.ur, self.upsilon, f, self.rho, log_err, self.s_inv_cart, self.irt, self.translations_irt, True)
+        ref_3fc = SCHAModules.module_hess.get_ref3fc(nat, orbit3a, indep_3fc_elem, n_indep_3fc_elem, kernel_3fc, rot_3fc, ur, upsilon, f, self.rho, log_err, s_inv_cart, irt, translations_irt, True)
 
         vs_red = np.empty([nrefq2,nat*3,nat*3,nat*3], dtype=np.complex128)
         vs_red = SCHAModules.module_hess.get_ref_vsq(refq2,trs_l,rot_3fc,ref_3fc,mapping_triplet,True)
@@ -4060,7 +4045,7 @@ Error while loading the julia module.
 
             orbit4t, orbit4o, norbit_4, indep_4fc_elem, n_indep_4fc_elem, kernel_4fc, rot_4fc, mapping_quadruplet = Classify.recognize_quadruplet(self.current_dyn, mapping, map_uc, verbose)
 
-            ref_4fc = SCHAModules.module_hess.get_ref4fc(orbit4t, indep_4fc_elem, n_indep_4fc_elem, kernel_4fc, rot_4fc, self.ur, self.upsilon, f, self.rho, log_err, self.s_inv_cart, self.irt, self.translations_irt, True)
+            ref_4fc = SCHAModules.module_hess.get_ref4fc(orbit4t, indep_4fc_elem, n_indep_4fc_elem, kernel_4fc, rot_4fc, ur, upsilon, f, self.rho, log_err, s_inv_cart, irt, translations_irt, True)
             
             ws_red = np.zeros([nrefq4,nat*3,nat*3,nat*3,nat*3], dtype=np.complex128)
             ws_red = SCHAModules.module_hess.get_ref_wsq(refq4,trs_l,rot_4fc,ref_4fc,mapping_quadruplet,True)
@@ -4068,7 +4053,7 @@ Error while loading the julia module.
             degs = qClassify.find_degeneracies(trs_wq)
             Pmn = qClassify.construct_Pmn(mapping, orbitq1a, orbitq1s, trs_polvecs, rot_cart)
             
-            v_red, ref_3fc = SCHAModules.module_hess.get_v3_red(nat, norbit3, orbit3a, orbit3s, indep_3fc_elem, n_indep_3fc_elem, kernel_3fc, rot_3fc, self.ur, self.upsilon, f, self.rho, log_err, self.s_inv_cart, self.irt, self.translations_irt)
+            v_red, ref_3fc = SCHAModules.module_hess.get_v3_red(nat, norbit3, orbit3a, orbit3s, indep_3fc_elem, n_indep_3fc_elem, kernel_3fc, rot_3fc, ur, upsilon, f, self.rho, log_err, s_inv_cart, irt, translations_irt)
             vs = SCHAModules.module_hess.get_all_vsq(trs_l, v_red, map_uc)
 
             if do_scf:
@@ -4089,7 +4074,7 @@ Error while loading the julia module.
                         for r in range(nr):
                             # Translated Single atomic-cartesian index
                             # Fortran to Py: -1
-                            phi_sc_odd[3*(self.translations_irt[nat1,r]-1)+alpha, 3*(self.translations_irt[nat2,r]-1)+beta] = fc9[index]
+                            phi_sc_odd[3*(translations_irt[nat1,r]-1)+alpha, 3*(translations_irt[nat2,r]-1)+beta] = fc9[index]
         dynq_odd = CC.Phonons.GetDynQFromFCSupercell(phi_sc_odd, np.array(self.current_dyn.q_tot), 
                                             self.current_dyn.structure, super_structure)
         self.convert_units(UNITS_DEFAULT)
@@ -4452,10 +4437,6 @@ Error while loading the julia module.
 
             i0 += 1
 
-
-
-
-
         # Collect all togheter
 
         if parallel:
@@ -4492,6 +4473,7 @@ Error while loading the julia module.
             timer.execute_timed_function(self.init)
         else:
             self.init()
+
     def w_to_a(self,w, T):
         n = len(w)
         a = np.zeros(n)
@@ -4500,6 +4482,89 @@ Error while loading the julia module.
         else:
             a[:] = np.sqrt((1.0 / np.tanh(0.5 * w * 315774.65221921849 / T)) / (2.0 * w))
         return a
+
+    def set_otf(
+        self,
+        flare_calc,
+        # flare args
+        write_model: int = 0,
+        init_atoms: list[int] | None = None,
+        # otf args
+        std_tolerance_factor: float = 1,
+        output_name: str = "otf_run",
+        max_atoms_added: int = 1,
+        update_style: str = "add_n",
+        update_threshold: float | None = None,
+        # other args
+        build_mode="bayesian",
+        train_hyps: tuple = (1,np.inf), 
+    ):
+        """Set on-the-fly training.
+        
+        Args:
+        ----
+            init_atoms (List[int], optional): List of atoms from the input
+                structure whose local environments and force components are
+                used to train the initial GP model. If None is specified, all
+                atoms are used to train the initial GP. Defaults to None.
+
+        """
+        from flare.io.output import Output
+        from flare.bffs.gp.calculator import FLARE_Calculator
+        from flare.bffs.sgp.calculator import SGP_Calculator
+
+        if not isinstance(flare_calc, (FLARE_Calculator, SGP_Calculator)):
+            raise ValueError("`flare_calc` must be either a `FLARE_Calculator` or `SGP_Calculator`")
+
+        self.flare_calc = flare_calc
+        self.gp_model = flare_calc.gp_model
+        self.init_atoms = init_atoms
+        
+        # set otf
+        self.std_tolerance = std_tolerance_factor
+        self.max_atoms_added = max_atoms_added
+        self.update_style = update_style
+        self.update_threshold = update_threshold
+
+        # other args
+        self.build_mode = build_mode
+
+        if self.build_mode not in ["bayesian", "direct"]:
+            raise Exception("build_mode needs to be 'bayesian' or 'direct'")
+
+        # Sanity check
+        if self.build_mode == "direct":
+            assert (self.update_style is None) and (
+                self.update_threshold is None
+            ), "In 'direct' mode, please set update_style=None, and update_threshold=None"
+
+        if self.update_style == "add_n":
+            assert self.update_threshold is None, (
+                "When update_style='add_n', the update_threshold does not take any effect,"
+                "please set update_threshold=None"
+            )
+
+        # set logger
+        self.output = Output(output_name, always_flush=True, print_as_xyz=True)
+        self.output_name = output_name
+
+        self.checkpt_name = self.output_name + "_checkpt.json"
+        self.flare_name = self.output_name + "_flare.json"
+        self.atoms_name = self.output_name + "_atoms.json"
+        self.checkpt_files = [
+            self.checkpt_name,
+            self.flare_name,
+            self.atoms_name,
+        ]
+
+        self.write_model = write_model
+        
+        if train_hyps[0] == "inf":
+            train_hyps[0] = np.inf
+        if train_hyps[1] == "inf":
+            train_hyps[1] = np.inf
+        self.train_hyps = train_hyps
+
 
 
 
@@ -4648,3 +4713,4 @@ def _wrapper_julia_vector_vector_fourier(*args, **kwargs):
 
     return julia.Main.multiply_vector_vector_fourier(*args,
             **kwargs)
+    
