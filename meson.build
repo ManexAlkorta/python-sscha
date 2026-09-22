@@ -124,6 +124,7 @@ common_link_flags = ['-fopenmp'] # For OpenMP
 
 schamodules_sources = [
   'SCHAModules/module_hess.f90',
+  'SCHAModules/module_cumulant.f90',
   'SCHAModules/module_stochastic.f90',
   'SCHAModules/module_new_thermodynamic.f90',
   'SCHAModules/module_anharmonic.f90',

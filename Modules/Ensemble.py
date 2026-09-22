@@ -2246,7 +2246,7 @@ DETAILS OF ERROR:
         return force
 
 
-    def get_free_energy(self, return_error = False):
+    def get_free_energy(self, return_error = False, verbose = False):
         """
         SSCHA FREE ENERGY
         =================
@@ -2275,6 +2275,8 @@ DETAILS OF ERROR:
         ----------
             return_error : bool, optional, default False
                 If true also the error is returned as a second value.
+            verbose : bool, optional, default False
+                If true prints harmonic and anharmonic contributions to the free energy.
 
         Returns
         -------
@@ -2293,8 +2295,10 @@ DETAILS OF ERROR:
         else:
             anharmonic_free_energy = self.get_average_energy(subtract_sscha = True, return_error = False)
 
-        #print "Free energy harmonic:", free_energy
-        #print "Free energy anharmonic:", anharmonic_free_energy
+        if verbose:
+            print ("Free energy harmonic:", free_energy)
+            print ("Free energy anharmonic:", anharmonic_free_energy)
+
         free_energy += anharmonic_free_energy
 
         if return_error:
@@ -3992,6 +3996,7 @@ Error while loading the julia module.
         ############################## Start impose TRS ##############################
         mappingq, orbitq1a, orbitq1s, its_zb = qClassify.map_singlet(q_list_cart, q_list, rcell*__A_TO_BOHR__, rot_cart)
         k = 0
+        trs_transq = np.zeros(transq.shape, dtype=bool)
         trs_qlist = np.empty(q_list.shape, dtype=np.float64)
         trs_qlist_cart = np.empty(q_list.shape, dtype=np.float64)
         trs_polvecs = np.empty(l.shape, dtype=np.complex128)
@@ -4001,6 +4006,7 @@ Error while loading the julia module.
 
         for qi, q in enumerate(q_list):
             if its_zb[qi] == 0:
+                trs_transq[k] = transq[qi]
                 trs_qlist[k] = q
                 trs_qlist_cart[k] = CC.Methods.cryst_to_cart(rcell*__A_TO_BOHR__, q)
                 trs_polvecs[k] = pol_vecs[qi]
@@ -4009,6 +4015,7 @@ Error while loading the julia module.
                 trs_wq[k] = wq[qi]
                 k+=1
             elif its_zb[qi] == 1:
+                # Transq is False outside gamma.
                 trs_qlist[k] = q
                 trs_qlist_cart[k] = CC.Methods.cryst_to_cart(rcell*__A_TO_BOHR__, q)
                 trs_polvecs[k] = pol_vecs[qi]
@@ -4028,6 +4035,7 @@ Error while loading the julia module.
         # Redo the classification imposing the TRS criteria.
         mappingq, orbitq1a, orbitq1s, its_zb = qClassify.map_singlet(trs_qlist_cart, trs_qlist, rcell*__A_TO_BOHR__, rot_cart)
         refq2, refq2o, norbitq2, nrefq2 = qClassify.recognize_doublet(trs_qlist, mappingq)
+        # refq3, refq3o, norbitq3, nrefq3 = qClassify.recognize_triplet(trs_qlist, mappingq)
 
         mod = self.supercell
         nat = self.current_dyn.structure.N_atoms
@@ -4035,9 +4043,15 @@ Error while loading the julia module.
 
         ref_3fc = SCHAModules.module_hess.get_ref3fc(nat, orbit3a, indep_3fc_elem, n_indep_3fc_elem, kernel_3fc, rot_3fc, ur, upsilon, f, self.rho, log_err, s_inv_cart, irt, translations_irt, True)
 
+        # osq = SCHAModules.module_hess.get_ref_osq(refq3,trs_l,rot_3fc,ref_3fc,mapping_triplet,True)
+        # I3 = SCHAModules.thermodynamic.get_i3(trs_wq, refq3, trs_transq, self.current_T)
+        # dF = SCHAModules.module_cumulant.get_bubble(norbitq3,I3,osq) * 2 # Hartree to Ry
+        # d3 = np.load("d3.npy")
+        # V = SCHAModules.module_cumulant.get_v(d3,trs_l,trs_wq)
+        # breakpoint()
         vs_red = np.empty([nrefq2,nat*3,nat*3,nat*3], dtype=np.complex128)
         vs_red = SCHAModules.module_hess.get_ref_vsq(refq2,trs_l,rot_3fc,ref_3fc,mapping_triplet,True)
-        trs_gq, daq = SCHAModules.get_gq(trs_aq, trs_wq, transq, self.current_T)
+        trs_gq, daq = SCHAModules.get_gq(trs_aq, trs_wq, trs_transq, self.current_T)
         indep_fc = SCHAModules.module_hess.get_indep2fc(vs_red, refq2, refq2o, norbitq2, orbit2a, n_indep_elem, indep_elem, rot_cart, mapping, map_uc, map_tr, T_list, trs_qlist, trs_gq, verbose)
         
         if include_v4:

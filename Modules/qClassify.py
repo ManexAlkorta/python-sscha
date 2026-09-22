@@ -187,6 +187,57 @@ def recognize_doublet(q_list, mapping, verbose=False):
 
     return orbit2t[:nref2], orbit2o[:nref2], norbit2[:nref2], nref2
 
+def recognize_triplet(q_list, mapping, verbose=False):
+    """
+    This function classifies wave-vector triplets in orbits. It is writen
+    if fortran. This function is just an interface.
+
+    Parameters
+    ----------
+        - q_list: np.ndarray
+            List of wave-vectors in cartesian coordinates. Dimension [Nq,3].
+        - mapping: np.ndarray
+            The mapping between symmetry related wave-vectors for each point
+            point symmetry of the crystal. Dimension [Nq,Nsym]
+        - verbose: bool
+            If True prints information during execution.
+            Defaults to False.
+    Returns
+    -------
+        - orbit3a: np.ndarray
+            Wave-vector doublet classification in orbits. Dimension [Nrefq3,tbd,3].
+        - orbit3s: np.ndarray
+            Which symmetry makes the classification in orbits/stars of orbit4a.
+            Dimension [Nrefq3,tbd,2].
+        - norbit: np.ndarray
+            Number of wave-vectors in orbit. Dimension [Nrefq3].
+        - nrefq3: int
+            Number of reference q-triplets.
+    """
+
+    start_time = time.time()
+
+    if verbose:
+        print("===== STARTING Q-TRIPLET CLASSIFICATION =====")
+
+    nrefq3, norbitq3 = SCHAModules.module_hess.get_q_nref3(mapping)
+    orbit3a, orbit3s, norbit, nrefq3 = SCHAModules.module_hess.recognize_q_triplets(nrefq3, norbitq3, q_list, mapping, verbose)
+    
+    end_time = time.time()
+    execution_time = end_time - start_time
+
+    if verbose:
+        print(" ")
+        print("Total q-triplets:", len(q_list)**3)
+        print("Number of Orbits:", nrefq3)
+        print(" ")
+        print("execution_time in q-triplet recognition:", execution_time, " s")
+        print("===== Q-TRIPLET CLASSIFICATION FINISHED ======")
+        print(" ")
+
+    sys.stdout.flush()
+
+    return orbit3a[:nrefq3], orbit3s[:nrefq3], norbit[:nrefq3], nrefq3
 
 def recognize_quadruplet(q_list, mapping, verbose=False):
     """
@@ -229,7 +280,7 @@ def recognize_quadruplet(q_list, mapping, verbose=False):
 
     if verbose:
         print(" ")
-        print("Total q-doublets:", len(q_list)**4)
+        print("Total q-quadruplets:", len(q_list)**4)
         print("Number of Orbits:", nrefq4)
         print(" ")
         print("execution_time in q-doublet recognition:", execution_time, " s")
