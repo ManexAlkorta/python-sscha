@@ -2385,7 +2385,7 @@ DETAILS OF ERROR:
         return total_free_energy
 
 
-    def get_free_energy_cumulant_bubble(self):
+    def get_free_energy_cumulant_bubble(self, verbose=False):
 
 
         self.convert_units(UNITS_HARTREE)
