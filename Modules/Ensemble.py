@@ -2385,7 +2385,190 @@ DETAILS OF ERROR:
         return total_free_energy
 
 
+    def get_free_energy_cumulant_bubble(self):
 
+
+        self.convert_units(UNITS_HARTREE)
+        super_structure = self.current_dyn.structure.generate_supercell(self.supercell)
+        dyn_supercell = self.current_dyn.GenerateSupercellDyn(self.supercell)
+        nr = np.prod(self.supercell)
+
+        nat_sc = dyn_supercell.structure.N_atoms
+        n_modes = nat_sc*3
+
+        mapping, rot_cart, map_uc, map_tr, T_list, T_list_frac = Classify.map_singlet(self.current_dyn, verbose = False)
+
+        orbit2a, orbit2s, norbit, indep_elem, n_indep_elem, tensor = Classify.recognize_doublet(self.current_dyn, mapping, map_uc, verbose = verbose)
+
+        orbit3a, orbit3s, norbit3, indep_3fc_elem, n_indep_3fc_elem, kernel_3fc, rot_3fc, mapping_triplet = Classify.recognize_triplet(self.current_dyn, mapping, map_uc, verbose=verbose)
+
+        nref2 = orbit2a.shape[0]
+        indep_fc = np.zeros((nref2, max(n_indep_elem)), dtype=np.float64)
+
+        super_structure = self.current_dyn.structure.generate_supercell(self.supercell)
+        w, pols = self.current_dyn.DiagonalizeSupercell()
+
+        n_modes = len(w)
+        nat_sc = int(np.shape(pols)[0] / 3)
+        nat = self.dyn_0.structure.N_atoms
+
+        a = np.zeros( (nat_sc * 3), dtype = np.double)
+        new_pol = np.zeros( (nat_sc, nat_sc * 3, 3), dtype = np.double)
+        # If the element is sym:
+        ur = np.zeros( (self.N, nat_sc * 3)) 
+        upsilon = np.zeros( (nat_sc*3, nat_sc * 3))
+        # Symmetry data for sym 3FC:
+        s_cart = np.zeros( (3, 3, 48) , dtype = np.float64, order = "F")
+        s_inv_cart = np.zeros( (3, 3, 48) , dtype = np.float64, order = "F")
+        irt = np.zeros( (48, nat_sc), dtype = np.intc, order = "F")
+        translations_irt = np.zeros( (nat_sc, np.prod(self.supercell)), dtype = np.intc, order = "F")
+        
+        # Get the translational modes
+        if not self.ignore_small_w:
+            trans = CC.Methods.get_translations(pols, super_structure.get_masses_array())
+        else:
+            trans = np.abs(w) < CC.Phonons.__EPSILON_W__
+
+
+        # Get the atomic types
+        ityp = super_structure.get_ityp() + 1 #Py to Fortran indexing
+        n_typ = len(self.current_dyn.structure.masses)
+
+        amass = np.zeros(n_typ, dtype = np.double)
+
+        for at_type in self.current_dyn.structure.masses:
+            index = ityp[self.current_dyn.structure.atoms.index(at_type)] - 1
+            amass[index] = self.current_dyn.structure.masses[at_type]
+
+        # Get the forces and conver in the correct units
+        f = (self.forces - self.sscha_forces)# * Bohr
+        u = self.u_disps.reshape((self.N, nat_sc, 3), order = "C") #/ Bohr
+        
+        log_err = "err_yesrho"
+        a = SCHAModules.thermodynamic.w_to_a(w, self.current_T)
+        # Get the polarization vectors in the correct format
+        for i in range(nat_sc):
+            for j in range(n_modes):
+                new_pol[i, j, :] = pols[3*i : 3*(i+1), j]
+
+        #Calculating rotated displacements and upsilon matrix"
+        ur, upsilon = SCHAModules.get_ur_upsilon_matrices(a, new_pol, trans, amass, ityp, u)
+        #Obtaining symmetry data
+        qe_sym = CC.symmetries.QE_Symmetry(super_structure)
+        qe_sym.SetupFromSPGLIB() 
+
+        # SpaceGroup symmetries data
+        s_cart, s_inv_cart, irt = qe_sym.QE_s_cart, qe_sym.QE_s_inv_cart, qe_sym.QE_irt
+        s_cart = np.asfortranarray(s_cart)
+        s_inv_cart = np.asfortranarray(s_inv_cart)
+
+        #Translations
+        translations_irt = qe_sym.QE_translations_irt
+        #self.prepare_sym_third_fc = False
+
+        wq = np.empty(nat*3, dtype=np.float64)
+        tmp_pol_vecs = np.empty([nat*3, nat*3], dtype=np.complex128)
+        norm_pol_vecs = np.empty([nat*3, nat*3], dtype=np.complex128)
+        pol_vecs = np.empty([self.supercell[0]*self.supercell[1]*self.supercell[2], nat*3, nat_sc*3], dtype=np.complex128)
+        l = np.empty([self.supercell[0]*self.supercell[1]*self.supercell[2], nat*3, nat_sc*3], dtype=np.complex128)
+        wq = np.empty([l.shape[0], l.shape[1]], dtype=np.float64)
+        aq = np.empty([l.shape[0], l.shape[1]], dtype=np.float64)
+
+        rcell = CC.Methods.get_reciprocal_vectors(self.current_dyn.structure.unit_cell)
+        q_list = np.empty([l.shape[0], 3], dtype=np.float64)
+        q_list_cart = np.empty([l.shape[0], 3], dtype=np.float64)
+        qi=0
+        for qstar in self.current_dyn.q_stars:
+            for q in qstar:
+                q_cryst = np.round(CC.Methods.cart_to_cryst(rcell, q)/__A_TO_BOHR__,6)
+                wq[qi], tmp_pol_vecs = self.current_dyn.DyagDinQ(iq=qi)
+                tmp_pol_vecs = np.transpose(tmp_pol_vecs) # First index mode. Second incex atom, alpha.
+                aq[qi] = SCHAModules.thermodynamic.w_to_a(wq[qi], self.current_T)
+                for mode in range(nat*3):
+                    for atom in range(nat):
+                        norm_pol_vecs[mode,atom*3:(atom+1)*3] = tmp_pol_vecs[mode,atom*3:(atom+1)*3]*aq[qi, mode]/np.sqrt(amass[ityp[atom]-1])
+                for mode in range(nat*3):
+                    for Tx in range(self.supercell[0]):
+                        for Ty in range(self.supercell[1]):
+                            for Tz in range(self.supercell[2]):
+                                T = np.array([Tx, Ty, Tz])
+                                index = Tx*self.supercell[2]*self.supercell[1]+Ty*self.supercell[2]+Tz
+                                l[qi,mode,index*nat*3:(index+1)*nat*3] = norm_pol_vecs[mode]*np.exp(2j*np.pi*np.matmul(q_cryst,T))/np.sqrt(self.supercell[0]*self.supercell[1]*self.supercell[2], dtype=np.complex128)
+                                pol_vecs[qi,mode,index*nat*3:(index+1)*nat*3] = tmp_pol_vecs[mode]*np.exp(2j*np.pi*np.matmul(q_cryst,T))/np.sqrt(self.supercell[0]*self.supercell[1]*self.supercell[2], dtype=np.complex128)
+                q_list[qi] = q_cryst
+                q_list_cart[qi] = q
+                qi+=1
+        
+        Nq = l.shape[0]
+        # Get translational modes
+        transq = np.zeros(wq.shape, dtype=bool)
+        for qi in range(Nq):
+            if not self.ignore_small_w:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    transq[qi,:] = CC.Methods.get_translations(np.transpose(pol_vecs[qi,:,:nat*3]), super_structure.get_masses_array()[:nat])
+            else:
+                transq[qi,:] = np.abs(w) < CC.Phonons.__EPSILON_W__
+            for mode in range(nat*3):
+                if transq[qi, mode]:
+                    l[qi,mode] = np.zeros(nat_sc*3, dtype=np.complex128)
+                    pol_vecs[qi,mode] = np.zeros(nat_sc*3, dtype=np.complex128)
+        
+        # Imposing eps(q)=[eps(-q)]* time-reversal criteria")
+
+        ############################## Start impose TRS ##############################
+        mappingq, orbitq1a, orbitq1s, its_zb = qClassify.map_singlet(q_list_cart, q_list, rcell*__A_TO_BOHR__, rot_cart)
+        k = 0
+        trs_transq = np.zeros(transq.shape, dtype=bool)
+        trs_qlist = np.empty(q_list.shape, dtype=np.float64)
+        trs_qlist_cart = np.empty(q_list.shape, dtype=np.float64)
+        trs_polvecs = np.empty(l.shape, dtype=np.complex128)
+        trs_l = np.empty(l.shape, dtype=np.complex128)
+        trs_aq = np.empty(aq.shape, dtype=np.float64)
+        trs_wq = np.empty(wq.shape, dtype=np.float64)
+
+        for qi, q in enumerate(q_list):
+            if its_zb[qi] == 0:
+                trs_transq[k] = transq[qi]
+                trs_qlist[k] = q
+                trs_qlist_cart[k] = CC.Methods.cryst_to_cart(rcell*__A_TO_BOHR__, q)
+                trs_polvecs[k] = pol_vecs[qi]
+                trs_l[k] = l[qi]
+                trs_aq[k] = aq[qi]
+                trs_wq[k] = wq[qi]
+                k+=1
+            elif its_zb[qi] == 1:
+                # Transq is False outside gamma.
+                trs_qlist[k] = q
+                trs_qlist_cart[k] = CC.Methods.cryst_to_cart(rcell*__A_TO_BOHR__, q)
+                trs_polvecs[k] = pol_vecs[qi]
+                trs_l[k] = l[qi]
+                trs_aq[k] = aq[qi]
+                trs_wq[k] = wq[qi]
+                k+=1
+                trs_qlist[k] = (-1)*q
+                trs_qlist_cart[k] = CC.Methods.cryst_to_cart(rcell*__A_TO_BOHR__, (-1)*q)
+                trs_polvecs[k] = np.conjugate(pol_vecs[qi])
+                trs_l[k] = np.conjugate(l[qi])
+                trs_aq[k] = aq[qi]
+                trs_wq[k] = wq[qi]
+                k+=1
+        ############################## End impose TRS ##############################
+
+        # Redo the classification imposing the TRS criteria.
+        mappingq, orbitq1a, orbitq1s, its_zb = qClassify.map_singlet(trs_qlist_cart, trs_qlist, rcell*__A_TO_BOHR__, rot_cart)
+        refq3, refq3o, norbitq3, nrefq3 = qClassify.recognize_triplet(trs_qlist, mappingq)
+
+        mod = self.supercell
+        nat = self.current_dyn.structure.N_atoms
+        n_modes = self.current_dyn.structure.N_atoms*mod[0]*mod[1]*mod[2]*3
+
+        ref_3fc = SCHAModules.module_hess.get_ref3fc(nat, orbit3a, indep_3fc_elem, n_indep_3fc_elem, kernel_3fc, rot_3fc, ur, upsilon, f, self.rho, log_err, s_inv_cart, irt, translations_irt, True)
+        osq = SCHAModules.module_hess.get_ref_osq(refq3,trs_l,rot_3fc,ref_3fc,mapping_triplet,True)
+        I3 = SCHAModules.thermodynamic.get_i3(trs_wq, refq3, trs_transq, self.current_T)
+        dF = SCHAModules.module_cumulant.get_bubble(norbitq3,I3,osq) * 2 # Hartree to Ry
+
+        print("Cumulant bubble correction:", dF, "Ry")
 
     def get_fc_from_self_consistency(self, subtract_sscha = False, return_error = False):
         """
@@ -4035,7 +4218,6 @@ Error while loading the julia module.
         # Redo the classification imposing the TRS criteria.
         mappingq, orbitq1a, orbitq1s, its_zb = qClassify.map_singlet(trs_qlist_cart, trs_qlist, rcell*__A_TO_BOHR__, rot_cart)
         refq2, refq2o, norbitq2, nrefq2 = qClassify.recognize_doublet(trs_qlist, mappingq)
-        # refq3, refq3o, norbitq3, nrefq3 = qClassify.recognize_triplet(trs_qlist, mappingq)
 
         mod = self.supercell
         nat = self.current_dyn.structure.N_atoms
@@ -4043,12 +4225,6 @@ Error while loading the julia module.
 
         ref_3fc = SCHAModules.module_hess.get_ref3fc(nat, orbit3a, indep_3fc_elem, n_indep_3fc_elem, kernel_3fc, rot_3fc, ur, upsilon, f, self.rho, log_err, s_inv_cart, irt, translations_irt, True)
 
-        # osq = SCHAModules.module_hess.get_ref_osq(refq3,trs_l,rot_3fc,ref_3fc,mapping_triplet,True)
-        # I3 = SCHAModules.thermodynamic.get_i3(trs_wq, refq3, trs_transq, self.current_T)
-        # dF = SCHAModules.module_cumulant.get_bubble(norbitq3,I3,osq) * 2 # Hartree to Ry
-        # d3 = np.load("d3.npy")
-        # V = SCHAModules.module_cumulant.get_v(d3,trs_l,trs_wq)
-        # breakpoint()
         vs_red = np.empty([nrefq2,nat*3,nat*3,nat*3], dtype=np.complex128)
         vs_red = SCHAModules.module_hess.get_ref_vsq(refq2,trs_l,rot_3fc,ref_3fc,mapping_triplet,True)
         trs_gq, daq = SCHAModules.get_gq(trs_aq, trs_wq, trs_transq, self.current_T)

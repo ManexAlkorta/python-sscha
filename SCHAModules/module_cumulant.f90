@@ -26,6 +26,7 @@ end subroutine
 
 subroutine get_V(d3,lq,wq,V,&
 n_mode_sc,nq,n_mode)
+    ! Get V for density matrix correction.
     double precision, dimension(n_mode_sc,n_mode_sc,n_mode_sc), intent(in) :: d3
     complex, dimension(nq, n_mode, n_mode_sc), intent(in) :: lq
     double precision, dimension(nq, n_mode), intent(in) :: wq
