@@ -2472,7 +2472,6 @@ DETAILS OF ERROR:
         pol_vecs = np.empty([self.supercell[0]*self.supercell[1]*self.supercell[2], nat*3, nat_sc*3], dtype=np.complex128)
         l = np.empty([self.supercell[0]*self.supercell[1]*self.supercell[2], nat*3, nat_sc*3], dtype=np.complex128)
         wq = np.empty([l.shape[0], l.shape[1]], dtype=np.float64)
-        aq = np.empty([l.shape[0], l.shape[1]], dtype=np.float64)
 
         rcell = CC.Methods.get_reciprocal_vectors(self.current_dyn.structure.unit_cell)
         q_list = np.empty([l.shape[0], 3], dtype=np.float64)
@@ -2483,10 +2482,10 @@ DETAILS OF ERROR:
                 q_cryst = np.round(CC.Methods.cart_to_cryst(rcell, q)/__A_TO_BOHR__,6)
                 wq[qi], tmp_pol_vecs = self.current_dyn.DyagDinQ(iq=qi)
                 tmp_pol_vecs = np.transpose(tmp_pol_vecs) # First index mode. Second incex atom, alpha.
-                aq[qi] = SCHAModules.thermodynamic.w_to_a(wq[qi], self.current_T)
                 for mode in range(nat*3):
                     for atom in range(nat):
-                        norm_pol_vecs[mode,atom*3:(atom+1)*3] = tmp_pol_vecs[mode,atom*3:(atom+1)*3]*aq[qi, mode]/np.sqrt(amass[ityp[atom]-1])
+                        norm_pol_vecs[mode,atom*3:(atom+1)*3] = tmp_pol_vecs[mode,atom*3:(atom+1)*3]/np.sqrt(amass[ityp[atom]-1]) # Compared to the hessian, this norm_pol_vecs do not include aq.
+                                                                                                                                  # same for l and trs_l.
                 for mode in range(nat*3):
                     for Tx in range(self.supercell[0]):
                         for Ty in range(self.supercell[1]):
@@ -2524,7 +2523,6 @@ DETAILS OF ERROR:
         trs_qlist_cart = np.empty(q_list.shape, dtype=np.float64)
         trs_polvecs = np.empty(l.shape, dtype=np.complex128)
         trs_l = np.empty(l.shape, dtype=np.complex128)
-        trs_aq = np.empty(aq.shape, dtype=np.float64)
         trs_wq = np.empty(wq.shape, dtype=np.float64)
 
         for qi, q in enumerate(q_list):
@@ -2534,7 +2532,6 @@ DETAILS OF ERROR:
                 trs_qlist_cart[k] = CC.Methods.cryst_to_cart(rcell*__A_TO_BOHR__, q)
                 trs_polvecs[k] = pol_vecs[qi]
                 trs_l[k] = l[qi]
-                trs_aq[k] = aq[qi]
                 trs_wq[k] = wq[qi]
                 k+=1
             elif its_zb[qi] == 1:
@@ -2543,14 +2540,12 @@ DETAILS OF ERROR:
                 trs_qlist_cart[k] = CC.Methods.cryst_to_cart(rcell*__A_TO_BOHR__, q)
                 trs_polvecs[k] = pol_vecs[qi]
                 trs_l[k] = l[qi]
-                trs_aq[k] = aq[qi]
                 trs_wq[k] = wq[qi]
                 k+=1
                 trs_qlist[k] = (-1)*q
                 trs_qlist_cart[k] = CC.Methods.cryst_to_cart(rcell*__A_TO_BOHR__, (-1)*q)
                 trs_polvecs[k] = np.conjugate(pol_vecs[qi])
                 trs_l[k] = np.conjugate(l[qi])
-                trs_aq[k] = aq[qi]
                 trs_wq[k] = wq[qi]
                 k+=1
         ############################## End impose TRS ##############################
@@ -2568,7 +2563,7 @@ DETAILS OF ERROR:
         I3 = SCHAModules.thermodynamic.get_i3(trs_wq, refq3, trs_transq, self.current_T)
         dF = SCHAModules.module_cumulant.get_bubble(norbitq3,I3,osq) * 2 # Hartree to Ry
 
-        print("Cumulant bubble correction:", dF / len(q_list), "Ry")
+        print("Cumulant bubble correction:", dF, "Ry")
 
     def get_fc_from_self_consistency(self, subtract_sscha = False, return_error = False):
         """
