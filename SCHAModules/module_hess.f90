@@ -401,18 +401,19 @@ subroutine get_ref_osq(refq3,pol_vecs,rot_3fc,ref_3fc,mapping_triplet,verbose,o1
         print*, "        Computing all reference O(q1,q2,q3)"
         print*, ""
     end if
-    o1 = 0
+    
+    o1 = 0.0d0
     do rq3 = 1, nrefq3
         print "(A, I8, A, I8)", &
 "    Calculating O(rq3=", rq3,") out of", nrefq3
         q1 = refq3(rq3,1,1)+1
         q2 = refq3(rq3,1,2)+1
         q3 = refq3(rq3,1,3)+1
+        lres2(:,:,:) = (0.0d0, 0.0d0)
         do at3 = 1, n_mode
             a = (at3-1)/3
             alpha = mod(at3-1,3)
             lres1(:,:) = (0.0d0, 0.0d0)
-            lres2(:,:,:) = (0.0d0, 0.0d0)
             do b = 0, nat_sc-1
                 do c = 0, nat_sc-1
                     ref3 = mapping_triplet(a+1,b+1,c+1,1)+1
@@ -440,15 +441,15 @@ lres1(mu2,3*c+gamma+1) + aux_3fc(index) * pol_vecs(q2,mu2,3*b+beta+1)
             do mu2 = 1, n_mode
                 do mu3 = 1, n_mode  
                     laux = pol_vecs(q3,mu3,:)
-                    lres2(mu2,mu3,at3) = dot_product(lres1(mu2,:),laux) 
+                    lres2(mu2,mu3,at3) = sum(lres1(mu2,:)*laux) 
                 end do
             end do
-            do mu1 = 1, n_mode
-                do mu2 = 1, n_mode
-                    do mu3 = 1, n_mode
-                        laux_red = pol_vecs(q1,mu1,:n_mode)
-                        o1(rq3,mu1,mu2,mu3) = dot_product(lres2(mu2,mu3,:),laux_red)
-                    end do
+        end do
+        do mu1 = 1, n_mode
+            laux_red = pol_vecs(q1,mu1,:n_mode)
+            do mu2 = 1, n_mode
+                do mu3 = 1, n_mode
+                    o1(rq3,mu1,mu2,mu3) = iq*sum(lres2(mu2,mu3,:)*laux_red)
                 end do
             end do
         end do

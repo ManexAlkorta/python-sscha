@@ -151,6 +151,7 @@ contains
         if (T/=0) then
             call get_nbq(wq, T, nbq, iq, n_mode)
             beta = HARTREE_TO_K/T
+            print*, T, beta, maxval(nbq)
             do rq3 = 1, nrefq3
                 q1 = refq3(rq3,1,1)+1
                 q2 = refq3(rq3,1,2)+1
@@ -168,22 +169,22 @@ contains
                             w2 = wq(q2,mu2)
                             w3 = wq(q3,mu3)
                             i31 = &
-        ((1+n1)*(1+n2)*(1+n3)-n1*n2*n3)/(w1+w2+w3)
+        ((1.0d0+n1)*(1.0d0+n2)*(1.0d0+n3)-n1*n2*n3)/(w1+w2+w3)
                             ! Scale independent check
                             if ((abs(w1-w2-w3))<0.00001d0*(w2+w3)) then
-                                i32 = beta*n2*n3*(1+n1)
+                                i32 = beta*n2*n3*(1.0d0+n1)
                             else
-                                i32 = (n1*(1+n2+n3)-n2*n3)/(-w1+w2+w3)
+                                i32 = (n1*(1.0d0+n2+n3)-n2*n3)/(-w1+w2+w3)
                             end if
                             if ((abs(w2-w1-w3))<0.00001d0*(w1+w3)) then
-                                i33 = beta*n1*n3*(1+n2)
+                                i33 = beta*n1*n3*(1.0d0+n2)
                             else
-                                i33 = (n2*(1+n1+n3)-n1*n3)/(-w2+w1+w3)
+                                i33 = (n2*(1.0d0+n1+n3)-n1*n3)/(-w2+w1+w3)
                             end if
                             if ((abs(w3-w2-w1))<0.00001d0*(w2+w1)) then
-                                i34 = beta*n2*n1*(1+n3)
+                                i34 = beta*n2*n1*(1.0d0+n3)
                             else
-                                i34 = (n3*(1+n2+n1)-n2*n1)/(-w3+w2+w1)
+                                i34 = (n3*(1.0d0+n2+n1)-n2*n1)/(-w3+w2+w1)
                             end if
                             I3(rq3,mu1,mu2,mu3) = (i31+i32+i33+i34)/(w1*w2*w3)
                         end do do3
@@ -205,7 +206,7 @@ contains
                             w1 = wq(q1,mu1)
                             w2 = wq(q2,mu2)
                             w3 = wq(q3,mu3)
-                            I3(rq3,mu1,mu2,mu3) = 1/(w1*w2*w3*(w1+w2+w3))
+                            I3(rq3,mu1,mu2,mu3) = 1.0d0/(w1*w2*w3*(w1+w2+w3))
                         end do do6
                     end do do5
                 end do do4

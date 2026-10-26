@@ -2568,7 +2568,7 @@ DETAILS OF ERROR:
         I3 = SCHAModules.thermodynamic.get_i3(trs_wq, refq3, trs_transq, self.current_T)
         dF = SCHAModules.module_cumulant.get_bubble(norbitq3,I3,osq) * 2 # Hartree to Ry
 
-        print("Cumulant bubble correction:", dF, "Ry")
+        print("Cumulant bubble correction:", dF / len(q_list), "Ry")
 
     def get_fc_from_self_consistency(self, subtract_sscha = False, return_error = False):
         """
@@ -4228,6 +4228,7 @@ Error while loading the julia module.
         vs_red = np.empty([nrefq2,nat*3,nat*3,nat*3], dtype=np.complex128)
         vs_red = SCHAModules.module_hess.get_ref_vsq(refq2,trs_l,rot_3fc,ref_3fc,mapping_triplet,True)
         trs_gq, daq = SCHAModules.get_gq(trs_aq, trs_wq, trs_transq, self.current_T)
+        breakpoint()
         indep_fc = SCHAModules.module_hess.get_indep2fc(vs_red, refq2, refq2o, norbitq2, orbit2a, n_indep_elem, indep_elem, rot_cart, mapping, map_uc, map_tr, T_list, trs_qlist, trs_gq, verbose)
         
         if include_v4:

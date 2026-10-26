@@ -9,7 +9,7 @@ subroutine get_bubble(norbitq3,I3,osq,deltaF, &
 nrefq3,n_mode)
     integer, dimension(nrefq3), intent(in) :: norbitq3
     double precision, dimension(nrefq3,n_mode,n_mode,n_mode), intent(in) :: I3
-    complex, dimension(nrefq3,n_mode,n_mode,n_mode), intent(in) :: osq
+    complex(kind=8), dimension(nrefq3,n_mode,n_mode,n_mode), intent(in) :: osq
 
     double precision, intent(out) :: deltaF
     
@@ -20,6 +20,7 @@ nrefq3,n_mode)
     do rq3 = 1, nrefq3
         osq2 = real(conjg(osq(rq3,:,:,:))*osq(rq3,:,:,:))
         deltaF = deltaF + norbitq3(rq3)*sum(I3(rq3,:,:,:)*osq2)
+        print*, rq3, norbitq3(rq3), maxval(I3(rq3,:,:,:)), maxval(osq2) 
     end do
     deltaF = -1.0d0/48.0d0*deltaF
 end subroutine
