@@ -151,7 +151,6 @@ contains
         if (T/=0) then
             call get_nbq(wq, T, nbq, iq, n_mode)
             beta = HARTREE_TO_K/T
-            print*, T, beta, maxval(nbq)
             do rq3 = 1, nrefq3
                 q1 = refq3(rq3,1,1)+1
                 q2 = refq3(rq3,1,2)+1
@@ -213,6 +212,136 @@ contains
             end do
         end if
     end subroutine get_I3
+
+    subroutine get_I4(wq, refq4, transq, T, I4, &
+    iq,n_mode,nrefq4,dimq4)
+
+        implicit none
+
+        double precision, dimension(iq, n_mode), intent(in) :: wq
+        integer, dimension(nrefq4,dimq4,4), intent(in) :: refq4
+        logical, dimension(iq, n_mode), intent(in) :: transq
+
+        double precision, dimension(nrefq4, n_mode, n_mode, n_mode, n_mode), intent(out) :: I4
+        double precision, intent(in) :: T
+        
+        double precision, dimension(iq, n_mode) :: nbq
+        double precision, parameter :: HARTREE_TO_K = 315774.65221921849d0
+
+        double precision :: i41,i42,i43,i44,i45,i46,i47,i48
+        double precision :: beta, n1, n2, n3, n4, w1, w2, w3, w4
+        integer :: iq, n_mode, nrefq4, dimq4, q1, q2, q3, q4, mu1, mu2, mu3, mu4, rq4
+        
+        I4 = 0.0d0
+
+        if (T/=0) then
+            call get_nbq(wq, T, nbq, iq, n_mode)
+            beta = HARTREE_TO_K/T
+            do rq4 = 1, nrefq4
+                q1 = refq4(rq4,1,1)+1
+                q2 = refq4(rq4,1,2)+1
+                q3 = refq4(rq4,1,3)+1
+                q4 = refq4(rq4,1,4)+1
+                do1: do mu1 = 1, n_mode
+                    if (transq(q1,mu1)) cycle do1
+                    do2: do mu2 = 1, n_mode
+                        if (transq(q2,mu2)) cycle do2
+                        do3: do mu3 = 1, n_mode
+                            if (transq(q3,mu3)) cycle do3
+                            do4: do mu4 = 1, n_mode
+                                if (transq(q4,mu4)) cycle do4
+                                n1 = nbq(q1,mu1)
+                                n2 = nbq(q2,mu2)
+                                n3 = nbq(q3,mu3)
+                                n4 = nbq(q4,mu4)
+                                w1 = wq(q1,mu1)
+                                w2 = wq(q2,mu2)
+                                w3 = wq(q3,mu3)
+                                w4 = wq(q4,mu4)
+                                i41 = &
+        ((1.0d0+n1)*(1.0d0+n2)*(1.0d0+n3)*(1.0d0+n4)-n1*n2*n3*n4)/(w1+w2+w3+w4)
+                                if ((abs(w1-w2-w3-w4))<0.00001d0*(w2+w3+w4)) then
+                                    i42 = beta*(1.0d0+n1)*n2*n3*n4
+                                else
+                                    i42 = &
+        (n1*(1.0d0+n2)*(1.0d0+n3)*(1.0d0+n4)-(1.0d0+n1)*n2*n3*n4)/(-w1+w2+w3+w4)
+                                end if
+
+                                if ((abs(-w1+w2-w3-w4))<0.00001d0*(w1+w3+w4)) then
+                                    i43 = beta*(1.0d0+n2)*n1*n3*n4
+                                else
+                                    i43 = &
+        ((1.0d0+n1)*n2*(1.0d0+n3)*(1.0d0+n4)-n1*(1.0d0+n2)*n3*n4)/(w1-w2+w3+w4)
+                                end if
+
+                                if ((abs(-w1-w2+w3-w4))<0.00001d0*(w1+w2+w4)) then
+                                    i44 = beta*(1.0d0+n3)*n1*n2*n4
+                                else
+                                    i44 = &
+        ((1.0d0+n1)*(1.0d0+n2)*n3*(1.0d0+n4)-n1*n2*(1.0d0+n3)*n4)/(w1+w2-w3+w4)
+                                end if
+
+                                if ((abs(-w1-w2-w3+w4))<0.00001d0*(w1+w2+w3)) then
+                                    i45 = beta*(1.0d0+n4)*n1*n2*n3
+                                else
+                                    i45 = &
+        ((1.0d0+n1)*(1.0d0+n2)*(1.0d0+n3)*n4-n1*n2*n3*(1.0d0+n4))/(w1+w2+w3-w4)
+                                end if
+
+                                if ((abs(w1+w2-w3-w4))<0.00001d0*(w3+w4)) then
+                                    i46 = beta*(1.0d0+n1)*(1.0d0+n2)*n3*n4
+                                else
+                                    i46 = &
+        (n1*n2*(1.0d0+n3)*(1.0d0+n4)-(1.0d0+n1)*(1.0d0+n2)*n3*n4)/(-w1-w2+w3+w4)
+                                end if
+
+                                if ((abs(w1-w2+w3-w4))<0.00001d0*(w2+w4)) then
+                                    i47 = beta*(1.0d0+n1)*(1.0d0+n3)*n2*n4
+                                else
+                                    i47 = &
+        (n1*n3*(1.0d0+n2)*(1.0d0+n4)-(1.0d0+n1)*(1.0d0+n3)*n2*n4)/(-w1-w3+w2+w4)
+                                end if
+
+                                if ((abs(w1-w2-w3+w4))<0.00001d0*(w2+w3)) then
+                                    i48 = beta*(1.0d0+n1)*(1.0d0+n4)*n2*n3
+                                else
+                                    i48 = &
+        (n1*n4*(1.0d0+n2)*(1.0d0+n3)-(1.0d0+n1)*(1.0d0+n4)*n2*n3)/(-w1-w4+w2+w3)
+                                end if
+                                I4(rq4,mu1,mu2,mu3,mu4) = &
+                                (i41+i42+i43+i44+i45+i46+i47+i48)/(w1*w2*w3*w4)
+                            end do do4
+                        end do do3
+                    end do do2
+                end do do1
+            end do
+        else
+            ! The simplified T=0 case.
+            do rq4 = 1, nrefq4
+                q1 = refq4(rq4,1,1)+1
+                q2 = refq4(rq4,1,2)+1
+                q3 = refq4(rq4,1,3)+1
+                q4 = refq4(rq4,1,4)+1
+                do5: do mu1 = 1, n_mode
+                    if (transq(q1,mu1)) cycle do5
+                    do6: do mu2 = 1, n_mode
+                        if (transq(q2,mu2)) cycle do6
+                        do7: do mu3 = 1, n_mode
+                            if (transq(q3,mu3)) cycle do7
+                            do8: do mu4= 1, n_mode
+                                if (transq(q4,mu4)) cycle do8
+                                    w1 = wq(q1,mu1)
+                                    w2 = wq(q2,mu2)
+                                    w3 = wq(q3,mu3)
+                                    w4 = wq(q4,mu4)
+                                    I4(rq4,mu1,mu2,mu3,mu4) = 1.0d0/(w1*w2*w3*w4*(w1+w2+w3+w4))
+                            end do do8
+                        end do do7
+                    end do do6
+                end do do5
+            end do
+        end if
+    end subroutine get_I4
 
     subroutine get_nbq(wq, T, nbq, &
     iq, n_mode)

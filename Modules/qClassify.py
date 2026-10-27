@@ -273,8 +273,61 @@ def recognize_quadruplet(q_list, mapping, verbose=False):
         print("===== STARTING Q-QUADRUPLET CLASSIFICATION =====")
 
     nrefq4, norbitq4 = SCHAModules.module_hess.get_q_nref4(mapping)
-    orbit4a, orbit4s, norbit, nrefq4 = SCHAModules.module_hess.recognize_q_quadruplet(nrefq4, norbitq4, q_list, mapping,verbose)
+    orbit4a, orbit4s, norbit, nrefq4 = SCHAModules.module_hess.recognize_q_quadruplet(nrefq4, norbitq4, q_list, mapping, verbose)
     
+    end_time = time.time()
+    execution_time = end_time - start_time
+
+    if verbose:
+        print(" ")
+        print("Total q-quadruplets:", len(q_list)**4)
+        print("Number of Orbits:", nrefq4)
+        print(" ")
+        print("execution_time in q-doublet recognition:", execution_time, " s")
+        print("===== Q-QUADRUPLET CLASSIFICATION FINISHED ======")
+        print(" ")
+
+    sys.stdout.flush()
+
+    return orbit4a[:nrefq4], orbit4s[:nrefq4], norbit[:nrefq4], nrefq4
+
+def recognize_quadruplet_cumulant(q_list, mapping, verbose=False):
+    """
+    This function classifies wave-vector quadruplets in orbits. It is writen
+    if fortran. This function is just an interface. Momentum conservation
+    respects q1+q2+q3+q4=G, where G is a reciprocal lattice vector. All 
+    permutations are allowed.
+
+    Parameters
+    ----------
+        - q_list: np.ndarray
+            List of wave-vectors in cartesian coordinates. Dimension [Nq,3].
+        - mapping: np.ndarray
+            The mapping between symmetry related wave-vectors for each point
+            point symmetry of the crystal. Dimension [Nq,Nsym]
+        - verbose: bool
+            If True prints information during execution.
+            Defaults to False.
+    Returns
+    -------
+        - orbit4a: np.ndarray
+            Wave-vector doublet classification in orbits. Dimension [Nrefq4,tbd,4].
+        - orbit4s: np.ndarray
+            Which symmetry makes the classification in orbits/stars of orbit4a.
+            Dimension [Nrefq4,tbd,2].
+        - norbit: np.ndarray
+            Number of wave-vectors in orbit. Dimension [Nrefq4].
+        - nrefq4: int
+            Number of reference q-quadruplets.
+    """
+
+    start_time = time.time()
+
+    if verbose:
+        print("===== STARTING Q-QUADRUPLET CLASSIFICATION =====")
+
+    nrefq4, norbitq4 = SCHAModules.module_hess.get_q_nref4_cumulant(mapping)
+    orbit4a, orbit4s, norbit, nrefq4 = SCHAModules.module_hess.recognize_q_quadruplet_cumulant(nrefq4, norbitq4, q_list, mapping, verbose)
     end_time = time.time()
     execution_time = end_time - start_time
 

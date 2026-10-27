@@ -467,6 +467,142 @@ lres1(mu2,3*c+gamma+1) + aux_3fc(index) * pol_vecs(q2,mu2,3*b+beta+1)
 
 end subroutine get_ref_osq
 
+subroutine get_ref_omsq(refq4,pol_vecs,rot_4fc,ref_4fc,mapping_quadruplet,verbose,om1,&
+	n_mode_sc,n_mode,iq,nperm,nsym,nref4,nrefq4,dimq4,nat,nat_sc)
+
+	implicit none
+
+	integer, dimension(nrefq4,dimq4,4), intent(in) :: refq4
+
+	complex, dimension(iq, n_mode, n_mode_sc), intent(in) :: pol_vecs
+
+	double precision, dimension(nperm, nsym, 81, 81), intent(in) :: rot_4fc
+    double precision, dimension(nref4, 81), intent(in) :: ref_4fc
+
+    integer, dimension(nat,nat_sc,nat_sc,nat_sc,3), intent(in) :: mapping_quadruplet
+
+    logical, intent(in) :: verbose
+
+	complex, dimension(nrefq4, n_mode, n_mode, n_mode, n_mode), intent(out) :: om1
+
+	double precision, dimension(81) :: aux_4fc
+    double precision :: tstart, tend
+	integer :: n_mode_sc,n_mode,ns,q1,q2,q3,q4,mu1,mu2,mu3,mu4,at3,iq,index,nrefq4,dimq4,i,j,rq4
+	integer :: nperm,nsym,nref4,ref4,equiv,iperm,isym,a,b,c,d,alpha,beta,gamma,delta,nat,nat_sc
+
+	complex, dimension(:), allocatable :: laux, laux_red
+    complex, dimension(:,:), allocatable :: lres1
+    complex, dimension(:,:,:), allocatable :: lres2
+    complex, dimension(:,:,:,:), allocatable :: lres3
+
+	logical, parameter :: debug = .false.
+
+	! Allocate stuff
+
+	allocate(lres1(n_mode,n_mode_sc))
+    allocate(lres2(n_mode,n_mode,n_mode_sc))
+    allocate(lres3(n_mode,n_mode,n_mode,n_mode))
+
+    allocate(laux(n_mode_sc))
+    allocate(laux_red(n_mode))
+
+    if (verbose) then
+        tstart = omp_get_wtime()
+        print*, "======================= get_ref_omsq() ====================="
+        print*, ""
+        print*, "        Computing all reference Om(q1,q2,q3,q4)"
+        print*, ""
+    end if
+    
+    om1 = 0.0d0
+    do rq4 = 1, nrefq4
+        print "(A, I8, A, I8)", &
+"    Calculating O(rq4=", rq4,") out of", nrefq4
+        q1 = refq4(rq4,1,1)+1
+        q2 = refq4(rq4,1,2)+1
+        q3 = refq4(rq4,1,3)+1
+        q4 = refq4(rq4,1,4)+1
+        lres3(:,:,:,:) = (0.0d0, 0.0d0)
+        do at3 = 1, n_mode
+            a = (at3-1)/3
+            alpha = mod(at3-1,3)
+            lres2(:,:,:) = (0.0d0, 0.0d0)
+            !$omp parallel private (beta,lres1,c,d,ref4,iperm,isym,aux_4fc)
+            !$omp do schedule (static) private (mu3,gamma,delta,index,mu4,laux)
+            do b = 0, nat_sc-1
+                do beta = 0, 2
+                    lres1(:,:) = (0.0d0, 0.0d0)
+                    do c = 0, nat_sc-1
+                        do d = 0, nat_sc-1
+                            ref4 = mapping_quadruplet(a+1,b+1,c+1,d+1,1)+1
+                            iperm = mapping_quadruplet(a+1,b+1,c+1,d+1,2)+1
+                            isym = mapping_quadruplet(a+1,b+1,c+1,d+1,3)+1
+                            aux_4fc = 0.0d0
+                            do j = 1, 81
+                                do i = 1, 81
+                                    aux_4fc(i) = aux_4fc(i) + &
+        rot_4fc(iperm, isym, i, j) * ref_4fc(ref4, j)
+                                end do
+                            end do
+                            do mu3 = 1, n_mode
+                                do gamma = 0, 2
+                                    do delta = 0, 2
+                                        index = &
+        ((3*alpha+beta)*3+gamma)*3+delta+1
+                                        lres1(mu3,3*d+delta+1) = &
+        lres1(mu3,3*d+delta+1) + aux_4fc(index) * pol_vecs(q3,mu3,3*c+gamma+1)
+                                    end do
+                                end do
+                            end do
+                        end do
+                    end do
+                    do mu3 = 1, n_mode
+                        do mu4 = 1, n_mode  
+                            laux = pol_vecs(q4,mu4,:)
+                            lres2(mu3,mu4,3*b+beta+1) = sum(lres1(mu3,:)*laux) 
+                        end do
+                    end do
+                end do
+            end do
+            !$omp end do
+            !$omp end parallel
+            do mu2 = 1, n_mode
+                do mu3 = 1, n_mode
+                    do mu4 = 1, n_mode  
+                        laux = pol_vecs(q2,mu2,:)
+                        lres3(mu2,mu3,mu4,at3) = sum(lres2(mu3,mu4,:)*laux) 
+                    end do
+                end do
+            end do
+        end do
+        do mu1 = 1, n_mode
+            laux_red = pol_vecs(q1,mu1,:n_mode)
+            do mu2 = 1, n_mode
+                do mu3 = 1, n_mode
+                    do mu4 = 1, n_mode
+                        om1(rq4,mu1,mu2,mu3,mu4) = iq*sum(lres3(mu2,mu3,mu4,:)*laux_red)
+                    end do
+                end do
+            end do
+        end do
+    end do
+	if (verbose) then
+        tend = omp_get_wtime()
+        print*, ""
+        print "(A, ES16.6,A)", "  Elapsed time inside get_ref_omsq():", tend-tstart, " seconds"
+		print*, "=======================     DONE     ======================="
+        print*, ""
+	endif
+
+    deallocate(laux)
+    deallocate(laux_red)
+
+	deallocate(lres1)
+    deallocate(lres2)
+    deallocate(lres3)
+
+end subroutine get_ref_omsq
+
 subroutine get_all_vsq(pol_vecs, v3_red, map_uc, vs, iq, n_mode, n_mode_sc, nat_sc)
 
     implicit none
@@ -2267,6 +2403,72 @@ subroutine get_q_nref4(mappings, nref4, norbitq4, iq, nsym)
         norbitq4 = MAXVAL(norbit4)
 end subroutine
 
+subroutine get_q_nref4_cumulant(mappings, nref4, norbitq4, iq, nsym)
+        ! Hessian and cumulant corrections transform as different objects.
+        integer, dimension(iq,nsym), intent(in) :: mappings
+
+        integer, intent(out) :: nref4
+        integer, intent(out) :: norbitq4
+
+        integer, allocatable, dimension(:,:) :: all4
+        integer, allocatable, dimension(:) :: norbit4
+        integer, dimension(24*nsym, 4) :: equilist
+
+        integer, dimension(24,4) :: permutations
+        integer, dimension(4) :: qplet, qplet_perm, qplet_sym
+        integer :: q1, q2, q3, q4, nall4, equiv, iperm, isym, iq, nsym
+        logical :: its_in_list
+
+        allocate(all4(iq**4,4))
+        allocate(norbit4(iq**4))
+
+        permutations = reshape( &
+        [1,2,3,4, 2,1,3,4, 3,2,1,4, 1,3,2,4, 2,3,1,4, 3,1,2,4, &
+        1,2,4,3, 2,1,4,3, 4,2,1,3, 1,4,2,3, 2,4,1,3, 4,1,2,3, &
+        1,4,3,2, 4,1,3,2, 3,4,1,2, 1,3,4,2, 4,3,1,2, 3,1,4,2, &
+        4,2,3,1, 2,4,3,1, 3,2,4,1, 4,3,2,1, 2,3,4,1, 3,4,2,1], &
+        [24,4], order=[2,1])
+
+        !permutations = reshape([1,2,3,4], [1,4])
+
+        nref4 = 0
+        nall4 = 0
+        norbit4 = 0
+        do1 : do q1 = 1, iq
+                do2 : do q2 = 1, iq
+                        do3: do q3 = 1, iq
+                                do4: do q4 = 1, iq
+                                        qplet = [q1-1, q2-1, q3-1, q4-1]
+                                        call qplet_in_list(qplet, all4, nall4, its_in_list)
+                                        if (its_in_list) cycle do4
+                                        nref4 = nref4 + 1
+                                        equiv = 0
+                                        do iperm = 1, 24
+                                                qplet_perm(1) = qplet(permutations(iperm,1))
+                                                qplet_perm(2) = qplet(permutations(iperm,2))
+                                                qplet_perm(3) = qplet(permutations(iperm,3))
+                                                qplet_perm(4) = qplet(permutations(iperm,4))
+                                                do isym = 1, nsym
+                                                        qplet_sym = &
+[mappings(qplet_perm(1)+1,isym), mappings(qplet_perm(2)+1,isym), mappings(qplet_perm(3)+1,isym), mappings(qplet_perm(4)+1,isym)]
+                                                        call qplet_in_list(qplet_sym, equilist, equiv, its_in_list)
+                                                        if (((iperm==1) .and. (isym==1)) .or. (.not. its_in_list)) then
+                                                                equilist(equiv+1,:) = qplet_sym
+                                                                all4(nall4+1,:) = qplet_sym
+                                                                equiv = equiv + 1
+                                                                nall4 = nall4 + 1
+                                                        end if
+                                                end do
+                                        end do
+                                        norbit4(nref4) = equiv
+                                        if (nall4 == iq**4) exit do1
+                                end do do4
+                        end do do3
+                end do do2
+        end do do1
+        norbitq4 = MAXVAL(norbit4)
+end subroutine
+
 subroutine recognize_q_triplets(nref3, norbitq3, q_list, mappings, verbose, &
 orbit3t, orbit3o, norbit, ref3, iq, nsym)
         integer, intent(in) :: nref3, norbitq3
@@ -2435,6 +2637,110 @@ orbit4t, orbit4o, norbit, ref4, iq, nsym)
                                         else                                
                                             equiv = 0
                                             do iperm = 1, 8
+                                                    qplet_perm(1) = qplet(permutations(iperm,1))
+                                                    qplet_perm(2) = qplet(permutations(iperm,2))
+                                                    qplet_perm(3) = qplet(permutations(iperm,3))
+                                                    qplet_perm(4) = qplet(permutations(iperm,4))
+                                                    do isym = 1, nsym
+                                                            qplet_sym = &
+    [mappings(qplet_perm(1)+1,isym), mappings(qplet_perm(2)+1,isym), mappings(qplet_perm(3)+1,isym), mappings(qplet_perm(4)+1,isym)]
+                                                            call qplet_in_list(qplet_sym, equilist, equiv, its_in_list)
+                                                            if (((iperm==1) .and. (isym==1)) .or. (.not. its_in_list)) then
+                                                                    equilist(equiv+1,:) = qplet_sym
+                                                                    all4(nall4+1,:) = qplet_sym
+                                                                    equiv = equiv + 1
+                                                                    nall4 = nall4 + 1
+                                                            end if
+                                                    end do
+                                            end do
+                                        end if
+                                        if (verbose) then
+                                            print*, "Reference q-quadruplet: (",q1,",",q2,",",q3,",",q4,")"
+                                            print*, "Orbit size:", equiv
+                                            print*, ""
+                                        end if
+                                        if (nall4 == iq**4) exit do1
+                                end do do4
+                        end do do3
+                end do do2
+        end do do1
+end subroutine
+
+subroutine recognize_q_quadruplet_cumulant(nref4, norbitq4, q_list, mappings, verbose, &
+orbit4t, orbit4o, norbit, ref4, iq, nsym)
+        ! This function differs from recognize_q_quadruplet in momentum conservation and
+        ! allowed permutations. This comes because the cumulant correction and the hessian
+        ! correction transform as different objects.
+        integer, intent(in) :: nref4, norbitq4
+        double precision, dimension(iq,3), intent(in) :: q_list
+        integer, dimension(iq,nsym), intent(in) :: mappings
+        logical, intent(in) :: verbose
+
+        integer, dimension(nref4,norbitq4,4), intent(out) :: orbit4t
+        integer, dimension(nref4,norbitq4,2), intent(out) :: orbit4o
+        integer, dimension(nref4), intent(out) :: norbit
+        integer, intent(out) :: ref4
+
+
+        integer, dimension(iq**4,4) :: all4
+        integer, dimension(norbitq4, 4) :: equilist
+
+        integer, dimension(24,4) :: permutations
+        integer, dimension(4) :: qplet, qplet_perm, qplet_sym
+        integer :: q1, q2, q3, q4, nall4, equiv, iperm, isym
+        integer :: iq, nsym
+
+        double precision, dimension(3) :: qsum
+        logical :: its_in_list, its_cons
+
+        orbit4t = 0
+        orbit4o = 0
+        
+        permutations = reshape( &
+        [1,2,3,4, 2,1,3,4, 3,2,1,4, 1,3,2,4, 2,3,1,4, 3,1,2,4, &
+        1,2,4,3, 2,1,4,3, 4,2,1,3, 1,4,2,3, 2,4,1,3, 4,1,2,3, &
+        1,4,3,2, 4,1,3,2, 3,4,1,2, 1,3,4,2, 4,3,1,2, 3,1,4,2, &
+        4,2,3,1, 2,4,3,1, 3,2,4,1, 4,3,2,1, 2,3,4,1, 3,4,2,1], &
+        [24,4], order=[2,1])
+
+        ref4 = 0
+        nall4 = 0
+        do1 : do q1 = 1, iq
+                do2 : do q2 = 1, iq
+                        do3: do q3 = 1, iq
+                                do4: do q4 = 1, iq
+                                        qplet = [q1-1,q2-1,q3-1,q4-1]
+                                        call qplet_in_list(qplet, all4, nall4, its_in_list)
+                                        if (its_in_list) cycle do4
+                                        qsum(:) = &
+q_list(q1,:)+q_list(q2,:)+q_list(q3,:)+q_list(q4,:)
+                                        call is_qcons(qsum, its_cons)
+                                        if (its_cons) then
+                                            ref4 = ref4 + 1                                        
+                                            equiv = 0
+                                            do iperm = 1, 24
+                                                    qplet_perm(1) = qplet(permutations(iperm,1))
+                                                    qplet_perm(2) = qplet(permutations(iperm,2))
+                                                    qplet_perm(3) = qplet(permutations(iperm,3))
+                                                    qplet_perm(4) = qplet(permutations(iperm,4))
+                                                    do isym = 1, nsym
+                                                            qplet_sym = &
+    [mappings(qplet_perm(1)+1,isym), mappings(qplet_perm(2)+1,isym), mappings(qplet_perm(3)+1,isym), mappings(qplet_perm(4)+1,isym)]
+                                                            call qplet_in_list(qplet_sym, equilist, equiv, its_in_list)
+                                                            if (((iperm==1) .and. (isym==1)) .or. (.not. its_in_list)) then
+                                                                    equilist(equiv+1,:) = qplet_sym
+                                                                    orbit4t(ref4,equiv+1,:) = qplet_sym
+                                                                    all4(nall4+1,:) = qplet_sym
+                                                                    orbit4o(ref4,equiv+1,:) = [iperm-1, isym-1]
+                                                                    equiv = equiv + 1
+                                                                    nall4 = nall4 + 1
+                                                            end if
+                                                    end do
+                                            end do
+                                            norbit(ref4) = equiv
+                                        else                                
+                                            equiv = 0
+                                            do iperm = 1, 24
                                                     qplet_perm(1) = qplet(permutations(iperm,1))
                                                     qplet_perm(2) = qplet(permutations(iperm,2))
                                                     qplet_perm(3) = qplet(permutations(iperm,3))

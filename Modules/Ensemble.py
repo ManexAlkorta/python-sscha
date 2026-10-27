@@ -2385,7 +2385,7 @@ DETAILS OF ERROR:
         return total_free_energy
 
 
-    def get_free_energy_cumulant_bubble(self, verbose=False):
+    def get_free_energy_cumulant_bubble(self, include_v4 = False, verbose = False):
 
 
         self.convert_units(UNITS_HARTREE)
@@ -2559,11 +2559,23 @@ DETAILS OF ERROR:
         n_modes = self.current_dyn.structure.N_atoms*mod[0]*mod[1]*mod[2]*3
 
         ref_3fc = SCHAModules.module_hess.get_ref3fc(nat, orbit3a, indep_3fc_elem, n_indep_3fc_elem, kernel_3fc, rot_3fc, ur, upsilon, f, self.rho, log_err, s_inv_cart, irt, translations_irt, True)
+        
         osq = SCHAModules.module_hess.get_ref_osq(refq3,trs_l,rot_3fc,ref_3fc,mapping_triplet,True)
         I3 = SCHAModules.thermodynamic.get_i3(trs_wq, refq3, trs_transq, self.current_T)
-        dF = SCHAModules.module_cumulant.get_bubble(norbitq3,I3,osq) * 2 # Hartree to Ry
+        dF_bubble = SCHAModules.module_cumulant.get_bubble(norbitq3,I3,osq) * 2 # Hartree to Ry
 
-        print("Cumulant bubble correction:", dF, "Ry")
+        if include_v4:
+            orbit4a, orbit4s, norbit_4, indep_4fc_elem, n_indep_4fc_elem, kernel_4fc, rot_4fc, mapping_quadruplet = Classify.recognize_quadruplet(self.current_dyn, mapping, map_uc, verbose)
+            refq4, refq40, norbitq4, nrefq4 = qClassify.recognize_quadruplet_cumulant(trs_qlist, mappingq)
+            ref_4fc = SCHAModules.module_hess.get_ref4fc(orbit4a, indep_4fc_elem, n_indep_4fc_elem, kernel_4fc, rot_4fc, ur, upsilon, f, self.rho, log_err, s_inv_cart, irt, translations_irt, True)
+
+            omsq = SCHAModules.module_hess.get_ref_omsq(refq4,trs_l,rot_4fc,ref_4fc,mapping_quadruplet,True)
+            I4 = SCHAModules.thermodynamic.get_i4(trs_wq, refq4, trs_transq, self.current_T)
+            dF_basketball = SCHAModules.module_cumulant.get_quartic_basketball(norbitq4,I4,omsq) * 2 # Hartree to Ry
+
+        print("Cumulant bubble correction:", dF_bubble, "Ry")
+        print("Cumulant quartic basketball correction:", dF_basketball, "Ry")
+        
 
     def get_fc_from_self_consistency(self, subtract_sscha = False, return_error = False):
         """
@@ -4229,9 +4241,9 @@ Error while loading the julia module.
         if include_v4:
             refq4, refq4o, norbitq4, nrefq4 = qClassify.recognize_quadruplet(trs_qlist,mappingq,verbose)
 
-            orbit4t, orbit4o, norbit_4, indep_4fc_elem, n_indep_4fc_elem, kernel_4fc, rot_4fc, mapping_quadruplet = Classify.recognize_quadruplet(self.current_dyn, mapping, map_uc, verbose)
+            orbit4a, orbit4s, norbit_4, indep_4fc_elem, n_indep_4fc_elem, kernel_4fc, rot_4fc, mapping_quadruplet = Classify.recognize_quadruplet(self.current_dyn, mapping, map_uc, verbose)
 
-            ref_4fc = SCHAModules.module_hess.get_ref4fc(orbit4t, indep_4fc_elem, n_indep_4fc_elem, kernel_4fc, rot_4fc, ur, upsilon, f, self.rho, log_err, s_inv_cart, irt, translations_irt, True)
+            ref_4fc = SCHAModules.module_hess.get_ref4fc(orbit4a, indep_4fc_elem, n_indep_4fc_elem, kernel_4fc, rot_4fc, ur, upsilon, f, self.rho, log_err, s_inv_cart, irt, translations_irt, True)
             
             ws_red = np.zeros([nrefq4,nat*3,nat*3,nat*3,nat*3], dtype=np.complex128)
             ws_red = SCHAModules.module_hess.get_ref_wsq(refq4,trs_l,rot_4fc,ref_4fc,mapping_quadruplet,True)

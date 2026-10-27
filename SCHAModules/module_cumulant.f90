@@ -20,9 +20,27 @@ nrefq3,n_mode)
     do rq3 = 1, nrefq3
         osq2 = real(conjg(osq(rq3,:,:,:))*osq(rq3,:,:,:))
         deltaF = deltaF + norbitq3(rq3)*sum(I3(rq3,:,:,:)*osq2)
-        print*, rq3, norbitq3(rq3), maxval(I3(rq3,:,:,:)), maxval(osq2) 
     end do
     deltaF = -1.0d0/48.0d0*deltaF
+end subroutine
+
+subroutine get_quartic_basketball(norbitq4,I4,omsq,deltaF, &
+nrefq4,n_mode)
+    integer, dimension(nrefq4), intent(in) :: norbitq4
+    double precision, dimension(nrefq4,n_mode,n_mode,n_mode,n_mode), intent(in) :: I4
+    complex(kind=8), dimension(nrefq4,n_mode,n_mode,n_mode,n_mode), intent(in) :: omsq
+
+    double precision, intent(out) :: deltaF
+    
+    double precision, dimension(n_mode,n_mode,n_mode,n_mode) :: omsq2
+    integer :: nrefq4, n_mode, rq4
+
+    deltaF = 0.0d0
+    do rq4 = 1, nrefq4
+        omsq2 = real(conjg(omsq(rq4,:,:,:,:))*omsq(rq4,:,:,:,:))
+        deltaF = deltaF + norbitq4(rq4)*sum(I4(rq4,:,:,:,:)*omsq2)
+    end do
+    deltaF = -1.0d0/384.0d0*deltaF
 end subroutine
 
 subroutine get_V(d3,lq,wq,V,&
